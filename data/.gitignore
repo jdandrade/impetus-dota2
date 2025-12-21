@@ -1,0 +1,5 @@
+# Stratz dataset - contains API data
+stratz_dataset.csv
+
+# Keep the directory but ignore contents
+!.gitkeep
