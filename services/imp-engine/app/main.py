@@ -18,15 +18,20 @@ app = FastAPI(
 )
 
 # CORS configuration - supports both local development and production
-# Set ALLOWED_ORIGINS env var for production (comma-separated URLs)
+# Set ALLOWED_ORIGINS env var for production (comma-separated URLs or * for all)
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
-allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",")]
+
+# Support wildcard for all origins
+if allowed_origins_env.strip() == "*":
+    allowed_origins = ["*"]
+else:
+    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=True if allowed_origins != ["*"] else False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
