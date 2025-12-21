@@ -9,8 +9,6 @@ import {
     Trophy,
     Loader2,
     Zap,
-    Shield,
-    Swords,
 } from "lucide-react";
 import {
     getMatchDetails,

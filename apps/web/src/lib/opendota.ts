@@ -385,7 +385,6 @@ export function getRankImageUrl(rankTier: number | null): string | null {
 
     // Rank tier format: first digit is medal (1-8), second is stars (0-5)
     const medal = Math.floor(rankTier / 10);
-    const stars = rankTier % 10;
 
     // Valve's rank images
     // Medal: 1=Herald, 2=Guardian, 3=Crusader, 4=Archon, 5=Legend, 6=Ancient, 7=Divine, 8=Immortal
