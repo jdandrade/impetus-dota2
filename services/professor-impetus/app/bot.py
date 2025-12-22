@@ -118,7 +118,7 @@ def build_match_embed(
     embed.description = f"💬 *{roast}*"
     
     # Footer
-    embed.set_footer(text="Powered by Impetus | Professor Stratz")
+    embed.set_footer(text="Professor Impetus")
     
     return embed
 

@@ -1,6 +1,6 @@
 """
 OpenDota API Client.
-Fetches latest match data for tracked players.
+Fetches latest match data for tracked players with FULL stats.
 """
 
 import logging
@@ -59,9 +59,6 @@ class MatchData:
     
     def get_role(self) -> str:
         """Determine player role based on slot and farm priority."""
-        # Positions 0-4 are Radiant, 128-132 are Dire
-        slot = self.player_slot
-        
         # Simplified role detection based on GPM/XPM
         if self.gpm >= 600:
             return "carry"
@@ -82,7 +79,7 @@ HERO_NAMES = {
     11: "Shadow Fiend", 12: "Phantom Lancer", 13: "Puck", 14: "Pudge", 15: "Razor",
     16: "Sand King", 17: "Storm Spirit", 18: "Sven", 19: "Tiny", 20: "Vengeful Spirit",
     21: "Windranger", 22: "Zeus", 23: "Kunkka", 25: "Lina", 26: "Lion",
-    27: "Shadow Shaman", 28: "Slardar", 29: "Tidehunter", 30: "Witch Doctor",
+    27: "Shadow Shaman", 28: "Shadow Shaman", 29: "Tidehunter", 30: "Witch Doctor",
     31: "Lich", 32: "Riki", 33: "Enigma", 34: "Tinker", 35: "Sniper",
     36: "Necrophos", 37: "Warlock", 38: "Beastmaster", 39: "Queen of Pain", 40: "Venomancer",
     41: "Faceless Void", 42: "Wraith King", 43: "Death Prophet", 44: "Phantom Assassin",
@@ -109,7 +106,12 @@ HERO_NAMES = {
 
 async def get_latest_match(account_id: int) -> Optional[MatchData]:
     """
-    Fetch the latest match for a player from OpenDota.
+    Fetch the latest match for a player from OpenDota with FULL stats.
+    
+    Steps:
+    1. Get latest match ID from /players/{id}/recentMatches
+    2. Fetch full match details from /matches/{match_id}
+    3. Find the player in the match and extract all stats
     
     Args:
         account_id: Dota 2 account ID (NOT Steam ID 64)
@@ -119,7 +121,7 @@ async def get_latest_match(account_id: int) -> Optional[MatchData]:
     """
     async with aiohttp.ClientSession() as session:
         try:
-            # First, get the latest match ID
+            # Step 1: Get the latest match ID
             matches_url = f"{OPENDOTA_API_BASE}/players/{account_id}/recentMatches"
             async with session.get(matches_url) as resp:
                 if resp.status != 200:
@@ -131,37 +133,58 @@ async def get_latest_match(account_id: int) -> Optional[MatchData]:
                     logger.warning(f"No matches found for account {account_id}")
                     return None
                 
-                latest = matches[0]
+                match_id = matches[0].get("match_id")
             
-            # Get player profile for name
+            # Step 2: Get player profile for name
             player_url = f"{OPENDOTA_API_BASE}/players/{account_id}"
             async with session.get(player_url) as resp:
                 player_data = await resp.json() if resp.status == 200 else {}
                 player_name = player_data.get("profile", {}).get("personaname", "Unknown")
             
-            # Build MatchData
-            hero_id = latest.get("hero_id", 0)
+            # Step 3: Fetch FULL match details
+            match_url = f"{OPENDOTA_API_BASE}/matches/{match_id}"
+            async with session.get(match_url) as resp:
+                if resp.status != 200:
+                    logger.error(f"Failed to fetch match {match_id}: {resp.status}")
+                    return None
+                
+                match_data = await resp.json()
+            
+            # Step 4: Find the player in the match
+            player_stats = None
+            for player in match_data.get("players", []):
+                if player.get("account_id") == account_id:
+                    player_stats = player
+                    break
+            
+            if not player_stats:
+                logger.error(f"Player {account_id} not found in match {match_id}")
+                return None
+            
+            # Step 5: Build MatchData with FULL stats
+            hero_id = player_stats.get("hero_id", 0)
+            duration = match_data.get("duration", 0)
             
             return MatchData(
-                match_id=latest.get("match_id"),
+                match_id=match_id,
                 hero_id=hero_id,
                 hero_name=HERO_NAMES.get(hero_id, f"Hero #{hero_id}"),
-                kills=latest.get("kills", 0),
-                deaths=latest.get("deaths", 0),
-                assists=latest.get("assists", 0),
-                gpm=latest.get("gold_per_min", 0),
-                xpm=latest.get("xp_per_min", 0),
-                net_worth=latest.get("gold_per_min", 0) * (latest.get("duration", 0) // 60),
-                level=latest.get("level", 1),
-                hero_damage=latest.get("hero_damage", 0),
-                tower_damage=latest.get("tower_damage", 0),
-                hero_healing=latest.get("hero_healing", 0),
-                last_hits=latest.get("last_hits", 0),
-                denies=latest.get("denies", 0),
-                duration_seconds=latest.get("duration", 0),
-                is_radiant=latest.get("player_slot", 0) < 128,
-                radiant_win=latest.get("radiant_win", False),
-                player_slot=latest.get("player_slot", 0),
+                kills=player_stats.get("kills", 0),
+                deaths=player_stats.get("deaths", 0),
+                assists=player_stats.get("assists", 0),
+                gpm=player_stats.get("gold_per_min", 0),
+                xpm=player_stats.get("xp_per_min", 0),
+                net_worth=player_stats.get("net_worth", 0),  # REAL net_worth!
+                level=player_stats.get("level", 1),
+                hero_damage=player_stats.get("hero_damage", 0),  # REAL hero_damage!
+                tower_damage=player_stats.get("tower_damage", 0),  # REAL tower_damage!
+                hero_healing=player_stats.get("hero_healing", 0),  # REAL healing!
+                last_hits=player_stats.get("last_hits", 0),
+                denies=player_stats.get("denies", 0),
+                duration_seconds=duration,
+                is_radiant=player_stats.get("player_slot", 0) < 128,
+                radiant_win=match_data.get("radiant_win", False),
+                player_slot=player_stats.get("player_slot", 0),
                 player_name=player_name,
             )
             
