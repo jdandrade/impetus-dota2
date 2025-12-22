@@ -22,6 +22,7 @@ import { transformMatchToPayload } from "@/lib/transformer";
 import { getMatchImp, type CalculateIMPResponse } from "@/lib/imp-client";
 import Scoreboard from "@/components/match/Scoreboard";
 import { type Role } from "@/components/match/RoleIcon";
+import { useMatchHistory } from "@/hooks/useMatchHistory";
 
 interface PlayerScore {
     playerIndex: number;
@@ -78,12 +79,15 @@ export default function MatchPage() {
     const [playerScores, setPlayerScores] = useState<PlayerScore[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
+    const { addToHistory } = useMatchHistory();
 
     useEffect(() => {
         if (matchId) {
+            // Add to history when viewing a match (works for direct links from Discord)
+            addToHistory(matchId);
             loadMatchData(matchId);
         }
-    }, [matchId]);
+    }, [matchId, addToHistory]);
 
     const loadMatchData = async (id: string) => {
         setLoadingState("fetching-match");

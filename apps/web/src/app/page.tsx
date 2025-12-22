@@ -37,9 +37,9 @@ const NEWS_ITEMS = [
   {
     id: 2,
     category: "Analysis",
-    title: "Kez: Broken or Bust?",
-    description: "Deep dive into the Bird Samurai's winrate in Immortal bracket.",
-    link: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    title: "BSJ: How to Win More Games",
+    description: "Pro tips on improving your gameplay and climbing MMR effectively.",
+    link: "https://www.youtube.com/watch?v=q7IEkD1Njlw",
     icon: BarChart3,
     color: "text-purple-400",
     bgColor: "bg-purple-500/20",
