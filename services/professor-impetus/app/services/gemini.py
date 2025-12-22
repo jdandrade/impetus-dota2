@@ -63,16 +63,17 @@ class GeminiClient:
             logger.debug(f"Generating roast for {player_name} with prompt: {user_prompt[:100]}...")
             
             # Generate response (sync API, but fast)
+            # Generous cap - model self-limits via prompt, you only pay for tokens used
             response = self.model.generate_content(
                 user_prompt,
                 generation_config=genai.GenerationConfig(
-                    max_output_tokens=200,
+                    max_output_tokens=1000,
                     temperature=0.9,
                 )
             )
             
             roast = response.text.strip()
-            logger.info(f"Generated roast for {player_name}: {roast[:50]}...")
+            logger.info(f"Generated roast for {player_name} ({len(roast)} chars): {roast}")
             return roast
             
         except Exception as e:
