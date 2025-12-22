@@ -11,13 +11,57 @@ import {
   BarChart3,
   Users,
   Target,
+  Clock,
+  Newspaper,
+  ExternalLink,
+  Github,
+  Sparkles,
 } from "lucide-react";
+import { useMatchHistory } from "@/hooks/useMatchHistory";
+
+// Default example matches (shown when no history)
+const DEFAULT_MATCHES = ["8616515910", "8612546740", "8615000000"];
+
+// Meta Watch news items
+const NEWS_ITEMS = [
+  {
+    id: 1,
+    category: "Patch",
+    title: "Patch 7.40 is Live",
+    description: "Largo, the Bard, joins the battle. Map changes and economy updates.",
+    link: "https://www.dota2.com/patches/7.40",
+    icon: Sparkles,
+    color: "text-emerald-400",
+    bgColor: "bg-emerald-500/20",
+  },
+  {
+    id: 2,
+    category: "Analysis",
+    title: "Kez: Broken or Bust?",
+    description: "Deep dive into the Bird Samurai's winrate in Immortal bracket.",
+    link: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    icon: BarChart3,
+    color: "text-purple-400",
+    bgColor: "bg-purple-500/20",
+  },
+  {
+    id: 3,
+    category: "System",
+    title: "OpenIMP Update",
+    description: "New Penta-Role regression model deployed for higher accuracy.",
+    link: "https://github.com/jdandrade/impetus-dota2",
+    icon: Github,
+    color: "text-brand-primary",
+    bgColor: "bg-brand-primary/20",
+  },
+];
 
 export default function Home() {
   const router = useRouter();
   const [matchId, setMatchId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { history, addToHistory, isHydrated } = useMatchHistory();
 
   const handleAnalyze = async () => {
     if (!matchId.trim()) return;
@@ -33,16 +77,31 @@ export default function Home() {
       return;
     }
 
-    // Navigate to the match page
+    // Add to history and navigate
+    addToHistory(cleanId);
     router.push(`/match/${cleanId}`);
   };
+
+  const handleQuickMatch = (id: string) => {
+    addToHistory(id);
+    router.push(`/match/${id}`);
+  };
+
+  // Display matches: use history if available, otherwise show defaults
+  const displayMatches = isHydrated && history.length > 0
+    ? history.slice(0, 5)
+    : DEFAULT_MATCHES;
+
+  const matchesLabel = isHydrated && history.length > 0
+    ? "Your Recent Matches"
+    : "Try These Matches";
 
   return (
     <div className="min-h-screen bg-cyber-bg">
       {/* Background gradient */}
       <div className="fixed inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-secondary/5 pointer-events-none" />
 
-      <div className="relative max-w-4xl mx-auto px-6 py-16">
+      <div className="relative max-w-5xl mx-auto px-6 py-16">
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
@@ -51,18 +110,17 @@ export default function Home() {
         >
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
             <Zap className="w-4 h-4 text-brand-primary" />
-            <span className="text-sm text-cyber-text-muted">Alpha v0.2.0</span>
+            <span className="text-sm text-cyber-text-muted">v0.6.0 Penta-Role</span>
           </div>
 
           <h1 className="text-5xl md:text-7xl font-bold mb-4">
             <span className="text-gradient">Impetus</span>
-            <span className="text-cyber-text"> Protocol</span>
           </h1>
 
           <p className="text-xl text-cyber-text-muted max-w-2xl mx-auto">
-            Next-generation Dota 2 performance analytics.
+            Next-gen Dota 2 analytics.
             <br />
-            Powered by the OpenIMP scoring engine.
+            Powered by the <span className="text-brand-primary font-semibold">OpenIMP</span> scoring engine.
           </p>
         </motion.header>
 
@@ -71,7 +129,7 @@ export default function Home() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="max-w-xl mx-auto mb-16"
+          className="max-w-xl mx-auto mb-12"
         >
           <div className="flex gap-3">
             <div className="flex-1 relative">
@@ -122,6 +180,35 @@ export default function Home() {
           </p>
         </motion.div>
 
+        {/* Recent Matches */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="text-center mb-16"
+        >
+          <div className="inline-flex items-center gap-2 mb-4">
+            <Clock className="w-4 h-4 text-cyber-text-muted" />
+            <h3 className="text-sm font-semibold text-cyber-text-muted uppercase tracking-wider">
+              {matchesLabel}
+            </h3>
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            {displayMatches.map((id) => (
+              <button
+                key={id}
+                onClick={() => handleQuickMatch(id)}
+                className="px-4 py-2 rounded-lg glass hover:bg-cyber-surface-light/50
+                         text-cyber-text-muted hover:text-cyber-text transition-all
+                         font-mono text-sm group"
+              >
+                <span className="text-brand-primary/60 group-hover:text-brand-primary">#</span>
+                {id}
+              </button>
+            ))}
+          </div>
+        </motion.div>
+
         {/* Features */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -138,7 +225,7 @@ export default function Home() {
               Statistical Analysis
             </h3>
             <p className="text-sm text-cyber-text-muted">
-              Z-score calculations using hero-specific benchmarks from OpenDota
+              Ridge regression trained on 6,000+ Stratz samples
             </p>
           </div>
 
@@ -161,38 +248,55 @@ export default function Home() {
               <Target className="w-6 h-6 text-purple-400" />
             </div>
             <h3 className="text-lg font-semibold text-cyber-text mb-2">
-              Role-Based Weighting
+              Penta-Role Weighting
             </h3>
             <p className="text-sm text-cyber-text-muted">
-              Carry, Mid, Offlane, Support each weighted by role-specific metrics
+              Position 1-5 each weighted by role-specific regression coefficients
             </p>
           </div>
         </motion.div>
 
-        {/* Sample Matches */}
+        {/* Meta Watch - News Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="text-center"
+          transition={{ delay: 0.5 }}
+          className="mb-16"
         >
-          <h3 className="text-sm font-semibold text-cyber-text-muted uppercase tracking-wider mb-4">
-            Try These Matches
-          </h3>
-          <div className="flex flex-wrap justify-center gap-3">
-            {["8612546740", "8610000000", "8615000000"].map((id) => (
-              <button
-                key={id}
-                onClick={() => {
-                  setMatchId(id);
-                  router.push(`/match/${id}`);
-                }}
-                className="px-4 py-2 rounded-lg glass hover:bg-cyber-surface-light/50
-                         text-cyber-text-muted hover:text-cyber-text transition-all
-                         font-mono text-sm"
+          <div className="flex items-center gap-2 mb-6">
+            <Newspaper className="w-5 h-5 text-cyber-text-muted" />
+            <h2 className="text-lg font-semibold text-cyber-text">
+              Latest from the Ancients
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {NEWS_ITEMS.map((item) => (
+              <a
+                key={item.id}
+                href={item.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="glass rounded-xl p-5 group hover:bg-cyber-surface-light/50 transition-all"
               >
-                #{id}
-              </button>
+                <div className="flex items-start justify-between mb-3">
+                  <div className={`w-10 h-10 rounded-lg ${item.bgColor} flex items-center justify-center`}>
+                    <item.icon className={`w-5 h-5 ${item.color}`} />
+                  </div>
+                  <span className="text-xs text-cyber-text-muted uppercase tracking-wider">
+                    {item.category}
+                  </span>
+                </div>
+                <h4 className="font-semibold text-cyber-text mb-2 group-hover:text-brand-primary transition-colors">
+                  {item.title}
+                </h4>
+                <p className="text-sm text-cyber-text-muted mb-3">
+                  {item.description}
+                </p>
+                <div className="flex items-center gap-1 text-xs text-brand-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                  Read more <ExternalLink className="w-3 h-3" />
+                </div>
+              </a>
             ))}
           </div>
         </motion.div>
@@ -202,7 +306,7 @@ export default function Home() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
-          className="mt-24 text-center text-cyber-text-muted text-sm"
+          className="text-center text-cyber-text-muted text-sm"
         >
           <p>impetus.gg • Open Source Dota 2 Analytics</p>
         </motion.footer>
