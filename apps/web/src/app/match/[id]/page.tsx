@@ -9,11 +9,16 @@ import {
     Trophy,
     Loader2,
     Zap,
+    ExternalLink,
+    AlertTriangle,
 } from "lucide-react";
 import {
     getMatchDetails,
     getHeroBenchmarks,
     getHeroName,
+    enrichPlayerProfiles,
+    requestMatchParse,
+    isMatchFullyParsed,
     type OpenDotaMatch,
     type OpenDotaPlayer,
     type HeroBenchmarks,
@@ -79,12 +84,18 @@ export default function MatchPage() {
     const [playerScores, setPlayerScores] = useState<PlayerScore[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
+    const [parseRequested, setParseRequested] = useState(false);
+    const [isFullyParsed, setIsFullyParsed] = useState(true);
     const { addToHistory } = useMatchHistory();
 
     useEffect(() => {
         if (matchId) {
             // Add to history when viewing a match (works for direct links from Discord)
             addToHistory(matchId);
+            // Request parse in background (doesn't block)
+            requestMatchParse(matchId).then(result => {
+                if (result) setParseRequested(true);
+            });
             loadMatchData(matchId);
         }
     }, [matchId, addToHistory]);
@@ -98,10 +109,17 @@ export default function MatchPage() {
             // Step 1: Fetch match details from OpenDota
             const match = await getMatchDetails(id);
             setMatchData(match);
+            setProgress(20);
+
+            // Step 1b: Enrich players with missing names (fetches from /players endpoint)
+            const enrichedPlayers = await enrichPlayerProfiles(match.players);
             setProgress(30);
 
+            // Check if match is fully parsed (has player data)
+            setIsFullyParsed(isMatchFullyParsed(enrichedPlayers));
+
             // Initialize player scores with role detection
-            const initialScores: PlayerScore[] = match.players.map((p, index) => ({
+            const initialScores: PlayerScore[] = enrichedPlayers.map((p, index) => ({
                 playerIndex: index,
                 heroId: p.hero_id,
                 heroName: getHeroName(p.hero_id),
@@ -116,8 +134,8 @@ export default function MatchPage() {
                 towerDamage: p.tower_damage,
                 items: [p.item_0, p.item_1, p.item_2, p.item_3, p.item_4, p.item_5],
                 itemNeutral: p.item_neutral,
-                role: detectRoleByNetWorth(p, match.players),
-                // Player identity
+                role: detectRoleByNetWorth(p, enrichedPlayers),
+                // Player identity (now enriched)
                 personaname: p.personaname,
                 rankTier: p.rank_tier,
                 impResult: null,
@@ -234,16 +252,53 @@ export default function MatchPage() {
                                         {(matchData.duration % 60).toString().padStart(2, "0")}
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 mb-3">
                                     <Trophy className={`w-4 h-4 ${matchData.radiant_win ? "text-green-400" : "text-red-400"}`} />
                                     <span className={matchData.radiant_win ? "text-green-400" : "text-red-400"}>
                                         {matchData.radiant_win ? "Radiant Victory" : "Dire Victory"}
                                     </span>
                                 </div>
+                                <a
+                                    href={`https://stratz.com/matches/${matchId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg glass
+                                             text-cyber-text-muted hover:text-cyber-text hover:bg-cyber-surface-light/50
+                                             transition-all text-sm"
+                                >
+                                    <ExternalLink className="w-4 h-4" />
+                                    View on Stratz
+                                </a>
                             </div>
                         )}
                     </div>
                 </motion.header>
+
+                {/* Parsing Banner - shows when match data is incomplete */}
+                {!isFullyParsed && loadingState === "done" && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mb-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center gap-3"
+                    >
+                        <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+                        <div>
+                            <p className="text-yellow-400 font-medium">Match Replay Not Fully Parsed</p>
+                            <p className="text-sm text-cyber-text-muted">
+                                Some player names may be unavailable.
+                                {parseRequested ? " Parse requested - refresh in a few minutes for updated data." : " We've requested a parse from OpenDota."}
+                            </p>
+                        </div>
+                        <a
+                            href={`https://www.opendota.com/matches/${matchId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto px-3 py-1.5 rounded-lg bg-yellow-500/20 text-yellow-400 text-sm hover:bg-yellow-500/30 transition-colors flex-shrink-0"
+                        >
+                            View on OpenDota
+                        </a>
+                    </motion.div>
+                )}
 
                 {/* Loading State */}
                 {loadingState !== "done" && loadingState !== "error" && (

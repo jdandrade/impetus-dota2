@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Image from "next/image";
-import { Shield, Swords, Trophy, Skull, Target, Coins, Zap, Crown } from "lucide-react";
+import { Shield, Swords, Trophy, Skull, Target, Coins, Zap, Crown, Crosshair, EyeOff } from "lucide-react";
 import type { CalculateIMPResponse } from "@/lib/imp-client";
 import { getHeroImageUrl, getRankImageUrl, getRankName } from "@/lib/opendota";
 import { getItemImageUrl, getItemDisplayName } from "@/lib/items";
@@ -254,6 +254,12 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                             </th>
                             <th className="text-left py-3 px-2 font-medium">Items</th>
                             <th className="text-center py-3 px-2 font-medium">GPM</th>
+                            <th className="text-center py-3 px-2 font-medium">
+                                <div className="flex items-center justify-center gap-1">
+                                    <Crosshair className="w-3 h-3" />
+                                    <span>DMG</span>
+                                </div>
+                            </th>
                             <th className="text-center py-3 px-2 font-medium">Net Worth</th>
                             <th className="text-center py-3 px-4 font-medium w-[140px]">
                                 <div className="flex items-center justify-center gap-1">
@@ -296,20 +302,26 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                             <div className="flex flex-col min-w-0">
                                                 {/* Player Name Row */}
                                                 <div className="flex items-center gap-1.5">
-                                                    {/* Rank Medal */}
+                                                    {/* Rank Medal + Stars */}
                                                     {player.rankTier && player.rankTier > 0 && (
                                                         <div
-                                                            className="relative w-5 h-5 flex-shrink-0"
+                                                            className="flex items-center gap-0.5 flex-shrink-0"
                                                             title={getRankName(player.rankTier)}
                                                         >
-                                                            <Image
-                                                                src={getRankImageUrl(player.rankTier) || ""}
-                                                                alt={getRankName(player.rankTier)}
-                                                                fill
-                                                                className="object-contain"
-                                                                sizes="20px"
-                                                                unoptimized
-                                                            />
+                                                            <div className="relative w-5 h-5">
+                                                                <Image
+                                                                    src={getRankImageUrl(player.rankTier) || ""}
+                                                                    alt={getRankName(player.rankTier)}
+                                                                    fill
+                                                                    className="object-contain"
+                                                                    sizes="20px"
+                                                                    unoptimized
+                                                                />
+                                                            </div>
+                                                            {/* Stars indicator */}
+                                                            <span className="text-[10px] text-yellow-400 font-bold">
+                                                                {player.rankTier % 10 || ""}
+                                                            </span>
                                                         </div>
                                                     )}
                                                     {/* MVP Crown */}
@@ -323,9 +335,16 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                                         </motion.div>
                                                     )}
                                                     {/* Player Name */}
-                                                    <span className={`font-semibold text-sm truncate max-w-[120px] ${isMVP ? "text-yellow-300" : "text-white"}`}>
-                                                        {player.personaname || "Anonymous"}
-                                                    </span>
+                                                    {player.personaname ? (
+                                                        <span className={`font-semibold text-sm truncate max-w-[120px] ${isMVP ? "text-yellow-300" : "text-white"}`}>
+                                                            {player.personaname}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="flex items-center gap-1 text-cyber-text-muted">
+                                                            <EyeOff className="w-3 h-3" />
+                                                            <span className="text-sm">Anonymous</span>
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 {/* Hero Name Row */}
                                                 <span className="text-xs text-cyber-text-muted truncate max-w-[140px]">
@@ -354,6 +373,13 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                     {/* GPM */}
                                     <td className="text-center py-2 px-2">
                                         <span className="font-mono text-yellow-400">{player.gpm}</span>
+                                    </td>
+
+                                    {/* Hero Damage */}
+                                    <td className="text-center py-2 px-2">
+                                        <span className="font-mono text-orange-400">
+                                            {formatNumber(player.heroDamage)}
+                                        </span>
                                     </td>
 
                                     {/* Net Worth */}

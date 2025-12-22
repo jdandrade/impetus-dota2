@@ -8,7 +8,7 @@ import logging
 
 from app.config import TRACKED_PLAYERS, convert_steam_id64_to_account_id, Settings
 from app.bot import ProfessorBot
-from app.services.opendota import get_latest_match, MatchData
+from app.services.opendota import get_latest_match, request_match_parse, MatchData
 from app.services.imp_engine import calculate_imp, IMPResult
 from app.services.gemini import GeminiClient
 from app.services.redis_store import RedisStore
@@ -75,6 +75,9 @@ class MatchTracker:
             match = await get_latest_match(account_id)
             if match:
                 logger.info(f"🆕 First run: Announcing current match for {fallback_name} ({match.match_id})")
+                
+                # Request parse for better data quality (fire and forget)
+                asyncio.create_task(request_match_parse(match.match_id))
                 
                 # Calculate IMP score
                 imp_result = await calculate_imp(match, self.settings.imp_engine_url)
@@ -148,6 +151,9 @@ class MatchTracker:
             return  # Already processed
         
         logger.info(f"New match detected for {match.player_name or fallback_name}: {match.match_id}")
+        
+        # Request parse for better data quality (fire and forget)
+        asyncio.create_task(request_match_parse(match.match_id))
         
         # Immediately mark as processed to prevent duplicates
         await self.redis.set_last_match_id(steam_id, match.match_id)

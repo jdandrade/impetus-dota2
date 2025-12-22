@@ -104,6 +104,32 @@ HERO_NAMES = {
 }
 
 
+async def request_match_parse(match_id: int) -> bool:
+    """
+    Request OpenDota to parse a match replay.
+    This queues the match for parsing - complete data will be available after parsing.
+    
+    Args:
+        match_id: Match ID to request parsing for
+    
+    Returns:
+        True if request was successful
+    """
+    async with aiohttp.ClientSession() as session:
+        try:
+            url = f"{OPENDOTA_API_BASE}/request/{match_id}"
+            async with session.post(url) as resp:
+                if resp.status == 200:
+                    logger.info(f"Parse requested for match {match_id}")
+                    return True
+                else:
+                    logger.warning(f"Failed to request parse for {match_id}: {resp.status}")
+                    return False
+        except Exception as e:
+            logger.error(f"Error requesting parse for {match_id}: {e}")
+            return False
+
+
 async def get_latest_match(account_id: int) -> Optional[MatchData]:
     """
     Fetch the latest match for a player from OpenDota with FULL stats.

@@ -426,6 +426,90 @@ export function getGameModeName(gameModeId: number): string {
 }
 
 /**
+ * Request OpenDota to parse a match replay.
+ * This queues the match for parsing - player names and other data will be available after parsing completes.
+ * 
+ * @returns Job object with job_id if successful, null otherwise
+ */
+export async function requestMatchParse(matchId: string): Promise<{ job_id: number } | null> {
+    try {
+        const response = await fetch(`${OPENDOTA_API_URL}/request/${matchId}`, {
+            method: "POST",
+        });
+
+        if (!response.ok) {
+            console.warn(`Failed to request parse for match ${matchId}: ${response.status}`);
+            return null;
+        }
+
+        const data = await response.json();
+        console.log(`Parse requested for match ${matchId}, job_id: ${data.job?.jobId}`);
+        return { job_id: data.job?.jobId };
+    } catch (error) {
+        console.error(`Error requesting parse for match ${matchId}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Check if a match appears to be fully parsed.
+ * Unparsed matches have many players with null account_id and missing personaname.
+ */
+export function isMatchFullyParsed(players: OpenDotaPlayer[]): boolean {
+    // Count players with missing data (no account_id AND no personaname)
+    const unparsedCount = players.filter(p => !p.account_id && !p.personaname).length;
+
+    // If more than 3 players are missing data, likely unparsed
+    return unparsedCount <= 3;
+}
+
+/**
+ * Fetch player profile from OpenDota to get their name.
+ * Returns null if player not found or has private profile.
+ */
+export async function fetchPlayerProfile(accountId: number): Promise<{ personaname: string; rank_tier: number | null } | null> {
+    try {
+        const response = await fetch(`${OPENDOTA_API_URL}/players/${accountId}`);
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        return {
+            personaname: data.profile?.personaname || null,
+            rank_tier: data.rank_tier || null,
+        };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Enrich players with missing names by fetching their profiles.
+ * Batches requests and only fetches for players with account_id but no personaname.
+ */
+export async function enrichPlayerProfiles(players: OpenDotaPlayer[]): Promise<OpenDotaPlayer[]> {
+    const enrichPromises = players.map(async (player) => {
+        // Skip if already has a name or no account_id
+        if (player.personaname || !player.account_id) {
+            return player;
+        }
+
+        // Fetch profile
+        const profile = await fetchPlayerProfile(player.account_id);
+        if (profile) {
+            return {
+                ...player,
+                personaname: profile.personaname || player.personaname,
+                rank_tier: profile.rank_tier || player.rank_tier,
+            };
+        }
+
+        return player;
+    });
+
+    return Promise.all(enrichPromises);
+}
+
+/**
  * Fetch match details from OpenDota API.
  */
 export async function getMatchDetails(matchId: string): Promise<OpenDotaMatch> {
