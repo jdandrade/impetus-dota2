@@ -21,7 +21,7 @@ class ViewMatchButton(ui.View):
         # Add the button as a link
         match_url = f"{frontend_url}/match/{match_id}"
         self.add_item(ui.Button(
-            label="🔍 Ver Match Completo",
+            label="🔍 View Full Match",
             url=match_url,
             style=discord.ButtonStyle.link,
         ))
@@ -57,11 +57,11 @@ def build_match_embed(
     if is_victory:
         color = discord.Color.green()
         result_emoji = "✅"
-        result_text = "Vitória"
+        result_text = "Victory"
     else:
         color = discord.Color.red()
         result_emoji = "❌"
-        result_text = "Derrota"
+        result_text = "Defeat"
     
     # Grade emoji
     grade_emojis = {
@@ -76,23 +76,23 @@ def build_match_embed(
     
     # Build embed
     embed = discord.Embed(
-        title=f"🎮 Nova Partida: {player_name}",
+        title=f"🎮 New Match: {player_name}",
         color=color,
     )
     
     # Match info
     embed.add_field(
-        name="Herói",
+        name="Hero",
         value=f"**{hero_name}**",
         inline=True,
     )
     embed.add_field(
-        name="Resultado",
+        name="Result",
         value=f"{result_emoji} {result_text}",
         inline=True,
     )
     embed.add_field(
-        name="Duração",
+        name="Duration",
         value=f"⏱️ {duration}",
         inline=True,
     )
@@ -104,7 +104,7 @@ def build_match_embed(
         inline=True,
     )
     embed.add_field(
-        name="Nota Impetus",
+        name="IMP Score",
         value=f"{grade_emoji} **{imp_score:+.1f}** ({grade})",
         inline=True,
     )
