@@ -1,5 +1,7 @@
-# Stratz dataset - contains API data
+# Stratz datasets - contains API data (too large for git)
 stratz_dataset.csv
+stratz_big_data.csv
 
 # Keep the directory but ignore contents
 !.gitkeep
+!.gitignore

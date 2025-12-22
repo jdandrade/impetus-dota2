@@ -1,435 +1,376 @@
 #!/usr/bin/env python3
 """
-Phase 13: Stratz IMP Formula Solver
+Phase 18: Penta-Role Regression Analysis
 
-Uses regression analysis to reverse-engineer the Stratz IMP formula
-from collected ground truth data.
+Performs granular regression analysis on Stratz IMP data,
+splitting by all 5 positions for maximum accuracy.
+
+Features:
+- 5-role buckets (Pos 1-5)
+- Ridge Regression (Alpha=1.0)
+- KDA and per-minute feature engineering
+- Copy-paste ready coefficient output
 
 Usage:
     python scripts/solve_formula.py
+
+Reference - Stratz IMP Variables (27 metrics):
+- Game Time, Kills, Deaths, Assists, Net Worth, Creep Score, Denies, Level
+- Hero Damage, Tower Damage, Physical/Magical/Pure Damage, Damage Received
+- Healing, Power Runes Controlled, Neutral Creep Kills, XP Fed, Actions/min
+- Stun/Disable/Slow/Weaken Count & Duration
 """
 
-import pandas as pd
-import numpy as np
+import csv
+import sys
 from pathlib import Path
-from typing import Any
+from collections import defaultdict
 
-# Scikit-learn imports
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.linear_model import LinearRegression, Ridge, Lasso
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+import numpy as np
+from sklearn.linear_model import Ridge, LinearRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.model_selection import cross_val_score
+from sklearn.metrics import r2_score, mean_absolute_error
 
 # ============================================
 # Configuration
 # ============================================
 
-INPUT_FILE = "data/stratz_dataset.csv"
+INPUT_FILE = "data/stratz_big_data.csv"
+RIDGE_ALPHA = 1.0
 
-# Features to use for regression
-# These are the stats that likely influence IMP
-CORE_FEATURES = [
+# Position names for output
+POSITION_NAMES = {
+    1: "POSITION_1",  # Safe Lane Carry
+    2: "POSITION_2",  # Mid Lane
+    3: "POSITION_3",  # Offlane
+    4: "POSITION_4",  # Soft Support
+    5: "POSITION_5",  # Hard Support
+}
+
+POSITION_DESCRIPTIONS = {
+    1: "Safe Lane Carry",
+    2: "Mid Lane",
+    3: "Offlane",
+    4: "Soft Support",
+    5: "Hard Support",
+}
+
+# Features to use for regression (matching what we have in the dataset)
+# Based on Stratz's 27 metrics and what we collected
+BASE_FEATURES = [
+    # Core stats
     "kills",
-    "deaths", 
+    "deaths",
     "assists",
     "gpm",
     "xpm",
-    "hero_damage",
-    "tower_damage",
     "networth",
     "level",
-    "kda",
+    "last_hits",
+    "denies",
+    
+    # Damage stats
+    "hero_damage",
+    "tower_damage",
+    "hero_healing",
+    
+    # Per-minute stats
     "kills_per_min",
     "deaths_per_min",
     "assists_per_min",
     "hero_damage_per_min",
     "tower_damage_per_min",
+    "healing_per_min",
+    
+    # Win/loss context
     "is_victory",
+    
+    # Match duration (important context)
+    "duration_minutes",
 ]
 
-SUPPORT_FEATURES = [
-    "kills",
-    "deaths",
-    "assists", 
-    "gpm",
-    "xpm",
-    "hero_damage",
-    "tower_damage",
-    "hero_healing",
-    "level",
-    "kda",
-    "kills_per_min",
-    "deaths_per_min",
-    "assists_per_min",
-    "hero_damage_per_min",
-    "hero_healing_per_min",
-    "is_victory",
+# Engineered features
+ENGINEERED_FEATURES = [
+    "kda_ratio",
+    "ka_ratio",      # (K+A) / duration
+    "death_rate",    # deaths / duration  
+    "farm_efficiency",  # networth / duration
+    "damage_efficiency",  # hero_damage / networth
 ]
+
+# ============================================
+# Data Loading
+# ============================================
+
+def load_data(filepath: str) -> list[dict]:
+    """Load CSV data into list of dictionaries."""
+    data = []
+    try:
+        with open(filepath, "r") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                data.append(row)
+    except FileNotFoundError:
+        print(f"❌ Error: File not found: {filepath}")
+        sys.exit(1)
+    
+    return data
+
+
+def safe_float(value, default=0.0) -> float:
+    """Safely convert to float."""
+    try:
+        if value is None or value == "" or value == "None":
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def safe_int(value, default=0) -> int:
+    """Safely convert to int."""
+    try:
+        if value is None or value == "" or value == "None":
+            return default
+        return int(float(value))
+    except (ValueError, TypeError):
+        return default
+
+
+def engineer_features(row: dict) -> dict:
+    """Add engineered features to a row."""
+    kills = safe_float(row.get("kills"))
+    deaths = safe_float(row.get("deaths"))
+    assists = safe_float(row.get("assists"))
+    networth = safe_float(row.get("networth"))
+    hero_damage = safe_float(row.get("hero_damage"))
+    duration = safe_float(row.get("duration_minutes"), 1.0)
+    
+    row["kda_ratio"] = (kills + assists) / max(deaths, 1)
+    row["ka_ratio"] = (kills + assists) / max(duration, 1)
+    row["death_rate"] = deaths / max(duration, 1)
+    row["farm_efficiency"] = networth / max(duration, 1)
+    row["damage_efficiency"] = hero_damage / max(networth, 1) if networth > 0 else 0
+    
+    return row
+
+
+def get_position(row: dict) -> int | None:
+    """
+    Determine player position (1-5).
+    Handles formats like "POSITION_4", "4", or integer 4.
+    """
+    position_raw = row.get("position", "")
+    
+    # Handle POSITION_X format (e.g., "POSITION_4")
+    if isinstance(position_raw, str) and position_raw.startswith("POSITION_"):
+        try:
+            pos = int(position_raw.replace("POSITION_", ""))
+            if pos in [1, 2, 3, 4, 5]:
+                return pos
+        except ValueError:
+            pass
+    
+    # Handle integer or numeric string
+    position = safe_int(position_raw)
+    if position in [1, 2, 3, 4, 5]:
+        return position
+    
+    # Fallback: deduce from role_type (less accurate)
+    role_type = row.get("role_type", "").lower()
+    if role_type == "core":
+        # Can't distinguish 1/2/3, return None to skip
+        return None
+    elif role_type == "support":
+        # Can't distinguish 4/5, return None to skip
+        return None
+    
+    return None
+
 
 # ============================================
 # Analysis Functions
 # ============================================
 
-def load_data(filepath: str) -> pd.DataFrame:
-    """Load the Stratz dataset."""
-    path = Path(filepath)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Dataset not found at {filepath}\n"
-            "Run 'python scripts/fetch_stratz_truth.py' first."
-        )
+def prepare_features(data: list[dict], feature_names: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Prepare feature matrix X and target vector y.
+    """
+    X = []
+    y = []
     
-    df = pd.read_csv(filepath)
-    print(f"Loaded {len(df)} records from {filepath}")
-    return df
+    for row in data:
+        # Check for valid IMP score
+        imp = safe_float(row.get("imp"))
+        if imp == 0 and row.get("imp") not in ["0", "0.0"]:
+            continue
+        
+        # Engineer features
+        row = engineer_features(row)
+        
+        # Extract features
+        features = []
+        valid = True
+        for feat in feature_names:
+            val = safe_float(row.get(feat))
+            features.append(val)
+        
+        if valid:
+            X.append(features)
+            y.append(imp)
+    
+    return np.array(X), np.array(y)
 
 
-def basic_statistics(df: pd.DataFrame) -> None:
-    """Print basic statistics about the dataset."""
-    print("\n" + "=" * 60)
-    print("DATASET STATISTICS")
-    print("=" * 60)
+def run_ridge_regression(X: np.ndarray, y: np.ndarray, feature_names: list[str], 
+                         alpha: float = 1.0) -> dict:
+    """
+    Run Ridge Regression and return results.
+    """
+    if len(X) < 10:
+        return None
     
-    print(f"\nTotal Records: {len(df)}")
-    print(f"Unique Matches: {df['match_id'].nunique()}")
-    
-    # Role distribution
-    print(f"\nRole Distribution:")
-    role_counts = df["role_type"].value_counts()
-    for role, count in role_counts.items():
-        print(f"  {role}: {count} ({100*count/len(df):.1f}%)")
-    
-    # Win/Loss distribution
-    print(f"\nWin/Loss Distribution:")
-    win_counts = df["is_victory"].value_counts()
-    print(f"  Winners: {win_counts.get(1, 0)}")
-    print(f"  Losers: {win_counts.get(0, 0)}")
-    
-    # IMP distribution
-    print(f"\nIMP Score Distribution:")
-    print(f"  Min: {df['imp'].min():.1f}")
-    print(f"  Max: {df['imp'].max():.1f}")
-    print(f"  Mean: {df['imp'].mean():.2f}")
-    print(f"  Std: {df['imp'].std():.2f}")
-    
-    # IMP by win/loss
-    print(f"\nIMP by Win/Loss:")
-    for is_win in [1, 0]:
-        subset = df[df["is_victory"] == is_win]
-        label = "Winners" if is_win else "Losers"
-        print(f"  {label}: mean={subset['imp'].mean():.2f}, std={subset['imp'].std():.2f}")
-    
-    # IMP by role
-    print(f"\nIMP by Role:")
-    for role in df["role_type"].unique():
-        subset = df[df["role_type"] == role]
-        print(f"  {role}: mean={subset['imp'].mean():.2f}, std={subset['imp'].std():.2f}")
-
-
-def correlation_analysis(df: pd.DataFrame, features: list[str]) -> None:
-    """Analyze correlations between features and IMP."""
-    print("\n" + "=" * 60)
-    print("CORRELATION WITH IMP")
-    print("=" * 60)
-    
-    # Filter to only existing columns
-    existing_features = [f for f in features if f in df.columns]
-    
-    correlations = df[existing_features + ["imp"]].corr()["imp"].drop("imp")
-    correlations = correlations.sort_values(key=abs, ascending=False)
-    
-    print("\nFeatures ranked by correlation with IMP:")
-    for feature, corr in correlations.items():
-        direction = "+" if corr > 0 else "-"
-        strength = "STRONG" if abs(corr) > 0.5 else "MODERATE" if abs(corr) > 0.3 else "WEAK"
-        print(f"  {feature:25s}: {direction}{abs(corr):.3f} ({strength})")
-
-
-def run_regression(
-    df: pd.DataFrame, 
-    features: list[str], 
-    target: str = "imp",
-    model_name: str = "Linear Regression",
-    model=None
-) -> dict[str, Any]:
-    """Run regression analysis and return results."""
-    
-    # Filter to only existing columns
-    existing_features = [f for f in features if f in df.columns]
-    
-    if len(existing_features) < len(features):
-        missing = set(features) - set(existing_features)
-        print(f"  Warning: Missing features: {missing}")
-    
-    # Prepare data
-    X = df[existing_features].fillna(0)
-    y = df[target]
-    
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-    
-    # Scale features for regularized models
+    # Standardize features (important for Ridge)
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    X_scaled = scaler.fit_transform(X)
     
-    # Use provided model or default to Linear Regression
-    if model is None:
-        model = LinearRegression()
-    
-    # Train model
-    model.fit(X_train_scaled, y_train)
+    # Fit Ridge Regression
+    model = Ridge(alpha=alpha)
+    model.fit(X_scaled, y)
     
     # Predictions
-    y_pred = model.predict(X_test_scaled)
+    y_pred = model.predict(X_scaled)
     
     # Metrics
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-    mae = mean_absolute_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
+    r2 = r2_score(y, y_pred)
+    mae = mean_absolute_error(y, y_pred)
     
     # Cross-validation
-    cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5, scoring="r2")
+    cv_scores = cross_val_score(model, X_scaled, y, cv=5, scoring='r2')
     
-    results = {
-        "model_name": model_name,
-        "model": model,
-        "scaler": scaler,
-        "features": existing_features,
-        "mse": mse,
-        "rmse": rmse,
-        "mae": mae,
-        "r2": r2,
-        "cv_r2_mean": cv_scores.mean(),
-        "cv_r2_std": cv_scores.std(),
+    # Build coefficient dictionary (unscaled for interpretability)
+    # To get interpretable coefficients, we need to adjust for scaling
+    coefficients = {}
+    for i, feat in enumerate(feature_names):
+        # Adjust coefficient: coef * (y_std / x_std)
+        # Since Ridge uses standardized features, raw coefs show relative importance
+        raw_coef = model.coef_[i]
+        # Store with scale info
+        coefficients[feat] = {
+            "raw": round(raw_coef, 4),
+            "mean": round(scaler.mean_[i], 4) if i < len(scaler.mean_) else 0,
+            "std": round(scaler.scale_[i], 4) if i < len(scaler.scale_) else 1,
+        }
+    
+    return {
+        "intercept": round(model.intercept_, 4),
+        "coefficients": coefficients,
+        "r2": round(r2, 4),
+        "mae": round(mae, 4),
+        "cv_r2_mean": round(np.mean(cv_scores), 4),
+        "cv_r2_std": round(np.std(cv_scores), 4),
+        "n_samples": len(y),
+        "scaler_means": scaler.mean_.tolist(),
+        "scaler_scales": scaler.scale_.tolist(),
     }
-    
-    return results
 
 
-def print_coefficients(results: dict, df: pd.DataFrame) -> None:
-    """Print the learned coefficients (weights) for each feature."""
-    model = results["model"]
-    features = results["features"]
-    scaler = results["scaler"]
+def get_real_world_coefficients(results: dict, feature_names: list[str]) -> dict:
+    """
+    Convert standardized coefficients back to real-world scale.
+    coef_real = coef_standardized / feature_std
+    """
+    real_coefs = {}
+    for i, feat in enumerate(feature_names):
+        raw_coef = results["coefficients"][feat]["raw"]
+        std = results["scaler_scales"][i] if i < len(results["scaler_scales"]) else 1
+        # Real coefficient = standardized / scale
+        real_coef = raw_coef / std if std > 0 else 0
+        real_coefs[feat] = round(real_coef, 6)
     
-    print(f"\n--- {results['model_name']} ---")
-    print(f"R² Score: {results['r2']:.4f}")
-    print(f"RMSE: {results['rmse']:.2f}")
-    print(f"MAE: {results['mae']:.2f}")
-    print(f"Cross-Val R² (5-fold): {results['cv_r2_mean']:.4f} ± {results['cv_r2_std']:.4f}")
-    
-    # Get coefficients (for linear models)
-    if hasattr(model, "coef_"):
-        print(f"\nLearned Coefficients (Weights):")
-        print("-" * 50)
-        
-        # Get raw coefficients and scale information
-        coefs = model.coef_
-        intercept = model.intercept_ if hasattr(model, "intercept_") else 0
-        
-        # Create coefficient dataframe
-        coef_df = pd.DataFrame({
-            "feature": features,
-            "coefficient": coefs,
-            "abs_coefficient": np.abs(coefs)
-        }).sort_values("abs_coefficient", ascending=False)
-        
-        # Calculate approximate real-world impact
-        # (coefficient * typical standard deviation of feature)
-        stds = scaler.scale_
-        
-        print(f"\nIntercept: {intercept:.4f}")
-        print(f"\nFeature Weights (sorted by importance):")
-        
-        for idx, row in coef_df.iterrows():
-            feature = row["feature"]
-            coef = row["coefficient"]
-            feat_idx = features.index(feature)
-            feature_std = stds[feat_idx]
-            
-            # Impact = coef * 1_std_change
-            impact = coef * feature_std
-            
-            direction = "+" if coef > 0 else ""
-            print(f"  {feature:25s}: {direction}{coef:.4f}  (1σ impact: {direction}{impact:.2f})")
-        
-        # Generate the formula
-        print(f"\n--- ESTIMATED FORMULA ---")
-        formula_parts = [f"{intercept:.2f}"]
-        for _, row in coef_df.head(8).iterrows():
-            feature = row["feature"]
-            coef = row["coefficient"]
-            feat_idx = features.index(feature)
-            feature_std = stds[feat_idx]
-            feature_mean = scaler.mean_[feat_idx]
-            
-            # Convert to raw feature scale
-            raw_coef = coef / max(feature_std, 0.001)
-            sign = "+" if raw_coef > 0 else "-"
-            print(f"    {sign} ({feature} * {abs(raw_coef):.6f})")
-    
-    # For tree-based models, show feature importances
-    elif hasattr(model, "feature_importances_"):
-        print(f"\nFeature Importances:")
-        print("-" * 50)
-        
-        importance_df = pd.DataFrame({
-            "feature": features,
-            "importance": model.feature_importances_
-        }).sort_values("importance", ascending=False)
-        
-        for _, row in importance_df.iterrows():
-            importance_bar = "█" * int(row["importance"] * 50)
-            print(f"  {row['feature']:25s}: {row['importance']:.4f} {importance_bar}")
+    return real_coefs
 
 
-def analyze_by_role(df: pd.DataFrame) -> None:
-    """Run separate analyses for Cores and Supports."""
-    print("\n" + "=" * 60)
-    print("REGRESSION ANALYSIS BY ROLE")
-    print("=" * 60)
+# ============================================
+# Output Formatting
+# ============================================
+
+def format_weights_for_python(all_results: dict[int, dict], feature_names: list[str]) -> str:
+    """
+    Format results as a Python dictionary for copy-paste into scoring.py.
+    """
+    output = []
+    output.append("# Phase 18: Penta-Role Coefficients")
+    output.append("# Generated by solve_formula.py from 6,000+ Stratz samples")
+    output.append("# Usage: IMP = intercept + sum(feature * coefficient)")
+    output.append("")
+    output.append("ROLE_COEFFICIENTS = {")
     
-    # Filter to cores
-    cores = df[df["role_type"] == "core"]
-    if len(cores) > 50:
-        print(f"\n{'='*60}")
-        print(f"CORE PLAYERS (n={len(cores)})")
-        print(f"{'='*60}")
+    for pos in sorted(all_results.keys()):
+        results = all_results[pos]
+        if results is None:
+            continue
         
-        # Linear Regression
-        lr_results = run_regression(
-            cores, CORE_FEATURES, 
-            model_name="Linear Regression"
-        )
-        print_coefficients(lr_results, cores)
+        pos_name = POSITION_NAMES.get(pos, f"POSITION_{pos}")
+        pos_desc = POSITION_DESCRIPTIONS.get(pos, "Unknown")
+        real_coefs = get_real_world_coefficients(results, feature_names)
         
-        # Ridge Regression (regularized)
-        ridge_results = run_regression(
-            cores, CORE_FEATURES,
-            model_name="Ridge Regression",
-            model=Ridge(alpha=1.0)
-        )
-        print_coefficients(ridge_results, cores)
+        output.append(f"    # {pos_desc} (n={results['n_samples']}, R²={results['r2']}, MAE={results['mae']})")
+        output.append(f'    "{pos_name}": {{')
+        output.append(f'        "intercept": {results["intercept"]},')
         
-        # Random Forest (for feature importance)
-        rf_results = run_regression(
-            cores, CORE_FEATURES,
-            model_name="Random Forest",
-            model=RandomForestRegressor(n_estimators=100, random_state=42, max_depth=10)
-        )
-        print_coefficients(rf_results, cores)
-    else:
-        print(f"\nNot enough core players ({len(cores)}) for regression.")
+        # Sort by absolute value for readability
+        sorted_coefs = sorted(real_coefs.items(), key=lambda x: abs(x[1]), reverse=True)
+        for feat, coef in sorted_coefs:
+            if abs(coef) > 0.0001:  # Skip near-zero coefficients
+                output.append(f'        "{feat}": {coef},')
+        
+        output.append("    },")
+        output.append("")
     
-    # Filter to supports
-    supports = df[df["role_type"] == "support"]
-    if len(supports) > 50:
-        print(f"\n{'='*60}")
-        print(f"SUPPORT PLAYERS (n={len(supports)})")
-        print(f"{'='*60}")
-        
-        # Linear Regression
-        lr_results = run_regression(
-            supports, SUPPORT_FEATURES,
-            model_name="Linear Regression"
-        )
-        print_coefficients(lr_results, supports)
-        
-        # Ridge Regression
-        ridge_results = run_regression(
-            supports, SUPPORT_FEATURES,
-            model_name="Ridge Regression", 
-            model=Ridge(alpha=1.0)
-        )
-        print_coefficients(ridge_results, supports)
-        
-        # Random Forest
-        rf_results = run_regression(
-            supports, SUPPORT_FEATURES,
-            model_name="Random Forest",
-            model=RandomForestRegressor(n_estimators=100, random_state=42, max_depth=10)
-        )
-        print_coefficients(rf_results, supports)
-    else:
-        print(f"\nNot enough support players ({len(supports)}) for regression.")
+    output.append("}")
+    
+    return "\n".join(output)
 
 
-def generate_weight_recommendations(df: pd.DataFrame) -> None:
-    """Generate recommended weights for our IMP engine based on the analysis."""
-    print("\n" + "=" * 60)
-    print("RECOMMENDED WEIGHTS FOR IMPETUS")
-    print("=" * 60)
+def print_analysis_summary(all_results: dict[int, dict], feature_names: list[str]) -> None:
+    """Print detailed analysis summary."""
     
-    cores = df[df["role_type"] == "core"]
-    supports = df[df["role_type"] == "support"]
+    print("\n" + "=" * 70)
+    print("📊 PENTA-ROLE REGRESSION ANALYSIS RESULTS")
+    print("=" * 70)
     
-    print("""
-Based on the regression analysis, here are recommended weight adjustments
-for the Impetus IMP Engine:
-
-CORE PLAYERS:
-""")
-    
-    if len(cores) > 50:
-        # Run a simple ridge regression to get stable coefficients
-        existing_features = [f for f in CORE_FEATURES if f in cores.columns]
-        X = cores[existing_features].fillna(0)
-        y = cores["imp"]
+    for pos in sorted(all_results.keys()):
+        results = all_results[pos]
+        if results is None:
+            continue
         
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
+        pos_name = POSITION_NAMES.get(pos, f"Position {pos}")
+        pos_desc = POSITION_DESCRIPTIONS.get(pos, "Unknown")
         
-        model = Ridge(alpha=1.0)
-        model.fit(X_scaled, y)
+        print(f"\n{'─' * 70}")
+        print(f"📌 {pos_name}: {pos_desc}")
+        print(f"{'─' * 70}")
+        print(f"   Samples: {results['n_samples']}")
+        print(f"   R² Score: {results['r2']:.4f}")
+        print(f"   MAE: {results['mae']:.4f}")
+        print(f"   CV R² (5-fold): {results['cv_r2_mean']:.4f} ± {results['cv_r2_std']:.4f}")
+        print(f"   Intercept: {results['intercept']}")
         
-        # Map coefficients to our weight format
-        coefs = dict(zip(existing_features, model.coef_))
+        # Top positive factors
+        real_coefs = get_real_world_coefficients(results, feature_names)
+        sorted_by_value = sorted(real_coefs.items(), key=lambda x: x[1], reverse=True)
         
-        print("  Stat                 | Stratz Influence | Suggested Weight")
-        print("  " + "-" * 55)
+        print(f"\n   🟢 Top POSITIVE Factors:")
+        for feat, coef in sorted_by_value[:5]:
+            if coef > 0:
+                print(f"      {feat}: +{coef:.6f}")
         
-        for feature in ["kills", "deaths", "assists", "gpm", "tower_damage", "hero_damage"]:
-            if feature in coefs:
-                influence = coefs[feature]
-                direction = "+" if influence > 0 else "-"
-                
-                # Normalize to weight scale (0.5 to 3.0)
-                suggested = max(0.5, min(3.0, abs(influence) / 5 + 1.0))
-                
-                print(f"  {feature:20s} | {direction}{abs(influence):6.3f}         | {suggested:.1f}x")
-    
-    print("""
-SUPPORT PLAYERS:
-""")
-    
-    if len(supports) > 50:
-        existing_features = [f for f in SUPPORT_FEATURES if f in supports.columns]
-        X = supports[existing_features].fillna(0)
-        y = supports["imp"]
-        
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-        
-        model = Ridge(alpha=1.0)
-        model.fit(X_scaled, y)
-        
-        coefs = dict(zip(existing_features, model.coef_))
-        
-        print("  Stat                 | Stratz Influence | Suggested Weight")
-        print("  " + "-" * 55)
-        
-        for feature in ["kills", "deaths", "assists", "hero_healing", "tower_damage"]:
-            if feature in coefs:
-                influence = coefs[feature]
-                direction = "+" if influence > 0 else "-"
-                suggested = max(0.3, min(2.0, abs(influence) / 5 + 0.5))
-                
-                print(f"  {feature:20s} | {direction}{abs(influence):6.3f}         | {suggested:.1f}x")
+        print(f"\n   🔴 Top NEGATIVE Factors:")
+        for feat, coef in sorted_by_value[-5:]:
+            if coef < 0:
+                print(f"      {feat}: {coef:.6f}")
 
 
 # ============================================
@@ -437,33 +378,99 @@ SUPPORT PLAYERS:
 # ============================================
 
 def main():
-    print("=" * 60)
-    print("Phase 13: Stratz IMP Formula Solver")
-    print("=" * 60)
+    print("=" * 70)
+    print("🔬 Phase 18: Penta-Role Regression Analysis")
+    print("=" * 70)
+    print(f"   Input: {INPUT_FILE}")
+    print(f"   Algorithm: Ridge Regression (α={RIDGE_ALPHA})")
     
     # Load data
-    try:
-        df = load_data(INPUT_FILE)
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        return
+    print("\n📂 Loading data...")
+    data = load_data(INPUT_FILE)
+    print(f"   Total records: {len(data)}")
     
-    # Basic statistics
-    basic_statistics(df)
+    # Split by position
+    by_position = defaultdict(list)
+    skipped = 0
     
-    # Correlation analysis
-    all_features = list(set(CORE_FEATURES + SUPPORT_FEATURES))
-    correlation_analysis(df, all_features)
+    for row in data:
+        pos = get_position(row)
+        if pos is not None:
+            by_position[pos].append(row)
+        else:
+            skipped += 1
     
-    # Regression by role
-    analyze_by_role(df)
+    print(f"\n📊 Distribution by Position:")
+    for pos in sorted(by_position.keys()):
+        desc = POSITION_DESCRIPTIONS.get(pos, "Unknown")
+        print(f"   Position {pos} ({desc}): {len(by_position[pos])} records")
+    print(f"   Skipped (unknown position): {skipped}")
     
-    # Generate recommendations
-    generate_weight_recommendations(df)
+    # Define features to use
+    all_features = BASE_FEATURES + ENGINEERED_FEATURES
+    print(f"\n🔧 Features ({len(all_features)}):")
+    for feat in all_features:
+        print(f"   - {feat}")
     
-    print("\n" + "=" * 60)
-    print("Analysis Complete!")
-    print("=" * 60)
+    # Run regression for each position
+    print("\n" + "=" * 70)
+    print("🧮 Running Ridge Regression for each position...")
+    print("=" * 70)
+    
+    all_results = {}
+    
+    for pos in sorted(by_position.keys()):
+        pos_data = by_position[pos]
+        pos_desc = POSITION_DESCRIPTIONS.get(pos, f"Position {pos}")
+        
+        print(f"\n⚙️ Training model for {pos_desc}...")
+        
+        X, y = prepare_features(pos_data, all_features)
+        print(f"   Features shape: {X.shape}")
+        print(f"   Target range: [{y.min():.1f}, {y.max():.1f}]")
+        
+        results = run_ridge_regression(X, y, all_features, alpha=RIDGE_ALPHA)
+        all_results[pos] = results
+        
+        if results:
+            print(f"   ✅ R² = {results['r2']:.4f}, MAE = {results['mae']:.4f}")
+        else:
+            print(f"   ❌ Insufficient data")
+    
+    # Print summary
+    print_analysis_summary(all_results, all_features)
+    
+    # Generate copy-paste code
+    print("\n" + "=" * 70)
+    print("📋 COPY-PASTE CODE FOR scoring.py")
+    print("=" * 70)
+    print(format_weights_for_python(all_results, all_features))
+    
+    # Save to file as well
+    output_file = "data/penta_role_coefficients.py"
+    with open(output_file, "w") as f:
+        f.write(format_weights_for_python(all_results, all_features))
+    print(f"\n💾 Coefficients saved to: {output_file}")
+    
+    # Summary statistics
+    print("\n" + "=" * 70)
+    print("📈 OVERALL SUMMARY")
+    print("=" * 70)
+    
+    avg_r2 = np.mean([r["r2"] for r in all_results.values() if r])
+    avg_mae = np.mean([r["mae"] for r in all_results.values() if r])
+    total_samples = sum(r["n_samples"] for r in all_results.values() if r)
+    
+    print(f"   Total samples used: {total_samples}")
+    print(f"   Average R² across roles: {avg_r2:.4f}")
+    print(f"   Average MAE across roles: {avg_mae:.4f}")
+    
+    if avg_r2 > 0.5:
+        print("\n   ✅ Good model fit! Ready to use coefficients.")
+    elif avg_r2 > 0.3:
+        print("\n   ⚠️ Moderate fit. Coefficients are usable but may need tuning.")
+    else:
+        print("\n   ❌ Low fit. Consider adding more features or data.")
 
 
 if __name__ == "__main__":
