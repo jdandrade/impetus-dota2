@@ -33,8 +33,9 @@ class Settings(BaseSettings):
         env="FRONTEND_URL"
     )
     
-    # Polling interval
-    poll_interval_seconds: int = Field(default=60, env="POLL_INTERVAL_SECONDS")
+    # Polling interval (5 min = 300s to stay under OpenDota rate limit)
+    # 7 players * 288 polls/day = 2016 calls/day (limit: 3000)
+    poll_interval_seconds: int = Field(default=300, env="POLL_INTERVAL_SECONDS")
     
     class Config:
         env_file = ".env"
