@@ -59,7 +59,8 @@ class MatchTracker:
     async def _initialize_players(self) -> None:
         """
         Initialize tracking by fetching current matches for all players.
-        This prevents announcing old matches on startup.
+        On FIRST RUN: Announces current match for each player (for testing).
+        On subsequent runs: Silently initializes without announcing.
         """
         for steam_id, fallback_name in TRACKED_PLAYERS.items():
             account_id = convert_steam_id64_to_account_id(steam_id)
@@ -70,16 +71,51 @@ class MatchTracker:
                 logger.info(f"Player {fallback_name} already tracked (last match: {last_match})")
                 continue
             
-            # Fetch current match to initialize
+            # First run - fetch and ANNOUNCE current match
             match = await get_latest_match(account_id)
             if match:
+                logger.info(f"🆕 First run: Announcing current match for {fallback_name} ({match.match_id})")
+                
+                # Calculate IMP score
+                imp_result = await calculate_imp(match, self.settings.imp_engine_url)
+                if not imp_result:
+                    logger.error(f"Failed to get IMP score for {fallback_name}")
+                    imp_result = IMPResult(
+                        imp_score=0.0,
+                        grade="C",
+                        percentile=50,
+                        summary="Score unavailable",
+                    )
+                
+                # Generate roast
+                player_name = match.player_name or fallback_name
+                roast = await self.gemini.generate_roast(
+                    player_name=player_name,
+                    match=match,
+                    imp_result=imp_result,
+                )
+                
+                # Send Discord announcement
+                await self.bot.send_match_announcement(
+                    player_name=player_name,
+                    match_id=match.match_id,
+                    hero_name=match.hero_name,
+                    is_victory=match.is_victory,
+                    kda=match.kda_string,
+                    duration=match.duration_string,
+                    imp_score=imp_result.imp_score,
+                    grade=imp_result.grade,
+                    roast=roast,
+                )
+                
+                # Store as processed
                 await self.redis.set_last_match_id(steam_id, match.match_id)
-                logger.info(f"Initialized {fallback_name} with match {match.match_id}")
+                logger.info(f"✅ Announced and initialized {fallback_name} with match {match.match_id}")
             else:
                 logger.warning(f"Could not initialize {fallback_name} (no match data)")
             
-            # Rate limit OpenDota calls
-            await asyncio.sleep(1)
+            # Rate limit OpenDota calls (2 seconds for safety)
+            await asyncio.sleep(2)
     
     async def _poll_matches(self) -> None:
         """Poll for new matches across all tracked players."""
