@@ -224,8 +224,8 @@ export const ITEM_NAMES: Record<number, string> = {
     381: "giant_ring",
     473: "voodoo_mask",
     485: "blitz_knuckles",
-    533: "witch_blade",
-    534: "recipe_witch_blade",
+    533: "recipe_witch_blade",
+    534: "witch_blade",
     565: "aghanims_shard",
     569: "orb_of_corrosion",
     571: "falcon_blade",
@@ -237,16 +237,16 @@ export const ITEM_NAMES: Record<number, string> = {
     588: "helm_of_the_overlord",
     593: "fluffy_hat",
     596: "falcon_blade",
-    600: "revenant_brooch",
-    603: "overwhelming_blink",
-    604: "swift_blink",
-    605: "arcane_blink",
-    606: "recipe_overwhelming_blink",
+    // Blink upgrades (corrected IDs)
+    600: "overwhelming_blink",
+    603: "swift_blink",
+    604: "arcane_blink",
+    606: "recipe_arcane_blink",
     607: "recipe_swift_blink",
-    608: "recipe_arcane_blink",
-    609: "gungir",
-    610: "recipe_gungir",
-    612: "wind_waker",
+    608: "recipe_overwhelming_blink",
+    609: "aghanims_shard",  // Also mapped at 565
+    610: "wind_waker",
+    612: "recipe_wind_waker",
     635: "boots_of_bearing",
     636: "recipe_boots_of_bearing",
     637: "penta_edged_sword",
@@ -271,7 +271,6 @@ export const ITEM_NAMES: Record<number, string> = {
     931: "disperser",
     932: "recipe_disperser",
     // Aghs upgrades
-    1466: "aghanims_blessing",
     1021: "parasma",
     1022: "recipe_parasma",
     1076: "angels_demise",
@@ -282,8 +281,11 @@ export const ITEM_NAMES: Record<number, string> = {
     1127: "cactus",
     1128: "light_collector",
     1156: "gloombane",
-    1565: "vindicators_axe",
+    // Gleipnir (was renamed from Gungir)
+    1466: "gungir",  // Gleipnir
+    1565: "recipe_gungir",  // Gleipnir Recipe
     1603: "safety_bubble",
+    1604: "vindicators_axe",
 };
 
 /**
