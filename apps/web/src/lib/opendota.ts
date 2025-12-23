@@ -45,6 +45,8 @@ export interface OpenDotaPlayer {
     gold_t?: number[];
     purchase_log?: Array<{ time: number; key: string }>;  // Array of item purchases in order
     ability_upgrades_arr?: number[];  // Array of ability IDs in skill order
+    // Lane assignment (1=safelane, 2=mid, 3=offlane)
+    lane?: number;
     // Derived/computed fields
     isRadiant: boolean;
 }
@@ -562,6 +564,8 @@ export async function getMatchDetails(matchId: string): Promise<OpenDotaMatch> {
         gold_t: (p.gold_t as number[] | undefined) ?? undefined,
         purchase_log: (p.purchase_log as Array<{ time: number; key: string }> | undefined) ?? undefined,
         ability_upgrades_arr: (p.ability_upgrades_arr as number[] | undefined) ?? undefined,
+        // Lane assignment (1=safelane, 2=mid, 3=offlane)
+        lane: (p.lane as number | undefined) ?? undefined,
         // Player slots 0-127 are Radiant, 128-255 are Dire
         isRadiant: ((p.player_slot as number) ?? 0) < 128,
     }));
@@ -692,6 +696,66 @@ export function calculatePlayerBenchmarks(
         hero_healing_per_min: calculatePercentile(player.hero_healing / durationMinutes, b.hero_healing_per_min),
         tower_damage: calculatePercentile(player.tower_damage, b.tower_damage),
     };
+}
+
+/**
+ * Role type for position detection.
+ */
+export type Role = "carry" | "mid" | "offlane" | "support" | "hard_support";
+
+/**
+ * Detect player role using lane data + net worth heuristics.
+ * This is the unified role detection logic used across all systems.
+ * 
+ * Lane values from OpenDota:
+ *   1 = Safelane (can be Carry Pos 1 or Hard Support Pos 5)
+ *   2 = Mid (Pos 2)
+ *   3 = Offlane (can be Offlane Pos 3 or Soft Support Pos 4)
+ * 
+ * For shared lanes (1 and 3), we use net worth to differentiate core vs support.
+ */
+export function detectRole(player: OpenDotaPlayer, allPlayers: OpenDotaPlayer[]): Role {
+    const isRadiant = player.isRadiant;
+    const teammates = allPlayers.filter((p) => p.isRadiant === isRadiant);
+
+    // If lane data is available, use it
+    if (player.lane !== undefined && player.lane >= 1 && player.lane <= 3) {
+        if (player.lane === 2) {
+            return "mid";
+        }
+
+        // For safelane (1) and offlane (3), compare net worth with lane partner
+        const lanePartners = teammates.filter((p) => p.lane === player.lane);
+
+        if (lanePartners.length >= 2) {
+            // Sort by net worth, highest first
+            const sortedByNW = [...lanePartners].sort((a, b) => b.net_worth - a.net_worth);
+            const isHighestNW = sortedByNW[0].hero_id === player.hero_id;
+
+            if (player.lane === 1) {
+                // Safelane: higher NW = carry, lower NW = hard support
+                return isHighestNW ? "carry" : "hard_support";
+            } else {
+                // Offlane: higher NW = offlane, lower NW = soft support
+                return isHighestNW ? "offlane" : "support";
+            }
+        }
+
+        // Only one player in lane (unusual), fall back to net worth ranking
+    }
+
+    // Fallback: pure net worth ranking within team
+    const sortedByNW = [...teammates].sort((a, b) => b.net_worth - a.net_worth);
+    const rank = sortedByNW.findIndex((p) => p.hero_id === player.hero_id);
+
+    switch (rank) {
+        case 0: return "carry";
+        case 1: return "mid";
+        case 2: return "offlane";
+        case 3: return "support";
+        case 4: return "hard_support";
+        default: return "support";
+    }
 }
 
 /**

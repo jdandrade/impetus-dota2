@@ -19,15 +19,16 @@ import {
     enrichPlayerProfiles,
     requestMatchParse,
     isMatchFullyParsed,
+    detectRole,
     type OpenDotaMatch,
     type OpenDotaPlayer,
     type HeroBenchmarks,
+    type Role,
 } from "@/lib/opendota";
 import { transformMatchToPayload } from "@/lib/transformer";
 import { getMatchImp, type CalculateIMPResponse } from "@/lib/imp-client";
 import Scoreboard from "@/components/match/Scoreboard";
 import NetWorthGraph from "@/components/match/NetWorthGraph";
-import { type Role } from "@/components/match/RoleIcon";
 import { useMatchHistory } from "@/hooks/useMatchHistory";
 
 interface PlayerScore {
@@ -56,25 +57,6 @@ interface PlayerScore {
     // IMP result
     impResult: CalculateIMPResponse | null;
     error: string | null;
-}
-
-/**
- * Detect role by net worth ranking within the team.
- */
-function detectRoleByNetWorth(player: OpenDotaPlayer, allPlayers: OpenDotaPlayer[]): Role {
-    const isRadiant = player.isRadiant;
-    const teammates = allPlayers.filter((p) => p.isRadiant === isRadiant);
-    const sortedByNW = [...teammates].sort((a, b) => b.net_worth - a.net_worth);
-    const rank = sortedByNW.findIndex((p) => p.hero_id === player.hero_id);
-
-    switch (rank) {
-        case 0: return "carry";
-        case 1: return "mid";
-        case 2: return "offlane";
-        case 3: return "support";
-        case 4: return "hard_support";
-        default: return "support";
-    }
 }
 
 type LoadingState = "idle" | "fetching-match" | "fetching-benchmarks" | "calculating-scores" | "done" | "error";
@@ -141,7 +123,7 @@ export default function MatchPage() {
                 towerDamage: p.tower_damage,
                 items: [p.item_0, p.item_1, p.item_2, p.item_3, p.item_4, p.item_5],
                 itemNeutral: p.item_neutral,
-                role: detectRoleByNetWorth(p, enriched),
+                role: detectRole(p, enriched),
                 // Player identity (now enriched)
                 personaname: p.personaname,
                 rankTier: p.rank_tier,
