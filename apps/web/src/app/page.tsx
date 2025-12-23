@@ -16,11 +16,22 @@ import {
   ExternalLink,
   Github,
   Sparkles,
+  Gamepad2,
 } from "lucide-react";
 import { useMatchHistory } from "@/hooks/useMatchHistory";
 
 // Default example matches (shown when no history)
 const DEFAULT_MATCHES = ["8616515910", "8612546740", "8615000000"];
+
+// Most addicted players (Steam64 IDs and display names)
+const ADDICTED_PLAYERS = [
+  { steam64: "76561198349926313", name: "Fear" },
+  { steam64: "76561198031378148", name: "Cego" },
+  { steam64: "76561198044301453", name: "Batatas" },
+  { steam64: "76561197986252478", name: "Gil" },
+  { steam64: "76561197994301802", name: "Mauzaum" },
+  { steam64: "76561198014373442", name: "Hory" },
+];
 
 // Meta Watch news items
 const NEWS_ITEMS = [
@@ -204,6 +215,35 @@ export default function Home() {
               >
                 <span className="text-brand-primary/60 group-hover:text-brand-primary">#</span>
                 {id}
+              </button>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Most Addicted Players */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="text-center mb-16"
+        >
+          <div className="inline-flex items-center gap-2 mb-4">
+            <Gamepad2 className="w-4 h-4 text-cyber-text-muted" />
+            <h3 className="text-sm font-semibold text-cyber-text-muted uppercase tracking-wider">
+              Most Addicted Players
+            </h3>
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            {ADDICTED_PLAYERS.map((player) => (
+              <button
+                key={player.steam64}
+                onClick={() => router.push(`/player/${player.steam64}`)}
+                className="px-4 py-2 rounded-lg glass hover:bg-cyber-surface-light/50
+                         text-cyber-text-muted hover:text-cyber-text transition-all
+                         text-sm group flex items-center gap-2"
+              >
+                <Users className="w-4 h-4 text-brand-secondary/60 group-hover:text-brand-secondary" />
+                <span className="font-medium">{player.name}</span>
               </button>
             ))}
           </div>

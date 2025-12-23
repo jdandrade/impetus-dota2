@@ -1,11 +1,13 @@
 "use client";
 
-import { motion } from "framer-motion";
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Shield, Swords, Trophy, Skull, Target, Coins, Zap, Crown, Crosshair, EyeOff } from "lucide-react";
+import { Shield, Swords, Trophy, Skull, Target, Coins, Zap, Crown, Crosshair, EyeOff, ChevronDown, ChevronRight } from "lucide-react";
 import type { CalculateIMPResponse } from "@/lib/imp-client";
 import { getHeroImageUrl, getRankImageUrl, getRankName } from "@/lib/opendota";
-import { getItemImageUrl, getItemDisplayName } from "@/lib/items";
+import { getItemImageUrl, getItemDisplayName, getItemImageUrlByName, getDisplayNameFromItemName } from "@/lib/items";
+import { isTalent } from "@/lib/abilities";
 import RoleIcon, { type Role } from "./RoleIcon";
 
 interface PlayerScore {
@@ -27,6 +29,10 @@ interface PlayerScore {
     // Player identity
     personaname?: string;
     rankTier?: number | null;
+    // Item purchase timeline (parsed matches only)
+    purchaseLog?: Array<{ time: number; key: string }>;
+    // Skill order (parsed matches only)
+    abilityUpgrades?: number[];
     // IMP result
     impResult: CalculateIMPResponse | null;
     error: string | null;
@@ -96,6 +102,140 @@ function formatNumber(num: number): string {
 }
 
 /**
+ * Format seconds to mm:ss format
+ */
+function formatTime(seconds: number): string {
+    const isNegative = seconds < 0;
+    const absSeconds = Math.abs(seconds);
+    const mins = Math.floor(absSeconds / 60);
+    const secs = absSeconds % 60;
+    const formatted = `${mins}:${secs.toString().padStart(2, '0')}`;
+    return isNegative ? `-${formatted}` : formatted;
+}
+
+/**
+ * Item Purchase Timeline - shows items grouped by minute with arrows between groups
+ */
+function ItemPurchaseTimeline({ purchaseLog }: { purchaseLog: Array<{ time: number; key: string }> }) {
+    // Filter out recipes and sort by time
+    const sortedItems = purchaseLog
+        .filter(item => !item.key.startsWith('recipe_'))
+        .sort((a, b) => a.time - b.time);
+
+    if (sortedItems.length === 0) {
+        return (
+            <p className="text-cyber-text-muted text-sm">No item purchase data available</p>
+        );
+    }
+
+    // Group items by minute (all negative times grouped as "Start")
+    const groupedByMinute: { minute: number; items: Array<{ name: string; time: number }> }[] = [];
+
+    sortedItems.forEach((item) => {
+        // Treat all negative times as -1 (Start)
+        const minute = item.time < 0 ? -1 : Math.floor(item.time / 60);
+        const existingGroup = groupedByMinute.find(g => g.minute === minute);
+
+        if (existingGroup) {
+            existingGroup.items.push({ name: item.key, time: item.time });
+        } else {
+            groupedByMinute.push({ minute, items: [{ name: item.key, time: item.time }] });
+        }
+    });
+
+    return (
+        <div className="flex flex-wrap items-center gap-1">
+            {groupedByMinute.map((group, groupIndex) => (
+                <React.Fragment key={group.minute}>
+                    {/* Arrow between groups */}
+                    {groupIndex > 0 && (
+                        <ChevronRight className="w-4 h-4 text-cyber-text-muted/50 flex-shrink-0 mx-1" />
+                    )}
+
+                    {/* Group of items at the same minute */}
+                    <div className="flex items-center gap-1 bg-cyber-surface-light/50 rounded px-2 py-1">
+                        {group.items.map((item, itemIndex) => (
+                            <div
+                                key={`${item.name}-${item.time}-${itemIndex}`}
+                                className="relative w-6 h-6 rounded overflow-hidden bg-cyber-surface-light flex-shrink-0"
+                                title={getDisplayNameFromItemName(item.name)}
+                            >
+                                <Image
+                                    src={getItemImageUrlByName(item.name)}
+                                    alt={getDisplayNameFromItemName(item.name)}
+                                    fill
+                                    className="object-cover"
+                                    sizes="24px"
+                                    unoptimized
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                />
+                            </div>
+                        ))}
+                        <span className="text-xs text-cyber-text-muted font-mono ml-1">
+                            {group.minute < 0 ? 'Start' : `${group.minute}m`}
+                        </span>
+                    </div>
+                </React.Fragment>
+            ))}
+        </div>
+    );
+}
+
+/**
+ * Skill Order Timeline - shows abilities in the order they were skilled
+ */
+function SkillOrderTimeline({ abilityUpgrades }: { abilityUpgrades: number[] }) {
+    if (abilityUpgrades.length === 0) {
+        return (
+            <p className="text-cyber-text-muted text-sm">No skill build data available</p>
+        );
+    }
+
+    // Get unique abilities to determine Q/W/E/R mapping
+    const uniqueAbilities = Array.from(new Set(
+        abilityUpgrades.filter(id => !isTalent(id))
+    )).slice(0, 4); // First 4 unique non-talent abilities are Q, W, E, R
+
+    const getLabel = (abilityId: number): string => {
+        if (isTalent(abilityId)) return 'T';
+        const index = uniqueAbilities.indexOf(abilityId);
+        return ['Q', 'W', 'E', 'R'][index] ?? '?';
+    };
+
+    const getColor = (abilityId: number): string => {
+        if (isTalent(abilityId)) return 'bg-yellow-500/80 text-yellow-900';
+        const index = uniqueAbilities.indexOf(abilityId);
+        const colors = [
+            'bg-blue-500/80 text-white',    // Q
+            'bg-green-500/80 text-white',   // W
+            'bg-purple-500/80 text-white',  // E
+            'bg-red-500/80 text-white',     // R
+        ];
+        return colors[index] ?? 'bg-gray-500/80 text-white';
+    };
+
+    return (
+        <div className="flex flex-wrap items-center gap-0.5">
+            {abilityUpgrades.map((abilityId, index) => (
+                <React.Fragment key={`${abilityId}-${index}`}>
+                    {index > 0 && (
+                        <ChevronRight className="w-4 h-4 text-cyber-text-muted/50 flex-shrink-0 mx-1" />
+                    )}
+                    <div
+                        className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${getColor(abilityId)}`}
+                        title={`Level ${index + 1}: ${getLabel(abilityId)}`}
+                    >
+                        {getLabel(abilityId)}
+                    </div>
+                </React.Fragment>
+            ))}
+        </div>
+    );
+}
+
+/**
  * ItemSlot Component - Displays a single item or empty slot
  */
 function ItemSlot({ itemId, isNeutral = false }: { itemId: number; isNeutral?: boolean }) {
@@ -148,6 +288,20 @@ function ItemRow({ items, itemNeutral }: { items: number[]; itemNeutral: number 
 }
 
 export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: ScoreboardProps) {
+    const [expandedPlayers, setExpandedPlayers] = useState<Set<number>>(new Set());
+
+    const toggleExpanded = (playerIndex: number) => {
+        setExpandedPlayers(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(playerIndex)) {
+                newSet.delete(playerIndex);
+            } else {
+                newSet.add(playerIndex);
+            }
+            return newSet;
+        });
+    };
+
     const isRadiant = team === "radiant";
     const TeamIcon = isRadiant ? Shield : Swords;
     const teamColor = isRadiant ? "text-green-400" : "text-red-400";
@@ -267,20 +421,23 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                     <span className="text-brand-primary font-semibold">IMP Score</span>
                                 </div>
                             </th>
+                            <th className="w-10"></th>
                         </tr>
                     </thead>
                     <tbody>
                         {players.map((player, index) => {
                             const isMVP = mvpPlayerIndex === player.playerIndex;
+                            const isExpanded = expandedPlayers.has(player.playerIndex);
                             return (
+                                <React.Fragment key={player.playerIndex}>
                                 <motion.tr
-                                    key={player.playerIndex}
                                     initial={{ opacity: 0, x: isRadiant ? -20 : 20 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ delay: index * 0.08 }}
                                     className={`border-b border-cyber-border/50 hover:bg-cyber-surface-light/40 transition-colors
                                         ${player.impResult ? getScoreBg(player.impResult.data.imp_score) : ""}
-                                        ${isMVP ? "bg-yellow-500/10" : ""}`}
+                                        ${isMVP ? "bg-yellow-500/10" : ""}
+                                        ${isExpanded ? "border-b-0" : ""}`}
                                 >
                                     {/* Hero + Player Identity */}
                                     <td className="py-2 px-4">
@@ -413,7 +570,60 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                             <span className="text-cyber-text-muted">--</span>
                                         )}
                                     </td>
+
+                                    {/* Expand Button */}
+                                    <td className="text-center py-2 pr-2">
+                                        {(() => {
+                                            const hasData = (player.purchaseLog && player.purchaseLog.length > 0) ||
+                                                           (player.abilityUpgrades && player.abilityUpgrades.length > 0);
+                                            return (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        toggleExpanded(player.playerIndex);
+                                                    }}
+                                                    className={`p-1 rounded hover:bg-cyber-surface-light/50 transition-colors ${
+                                                        !hasData ? 'opacity-30 cursor-not-allowed' : ''
+                                                    }`}
+                                                    title={hasData ? "View build details" : "Build details not available (match not parsed)"}
+                                                    disabled={!hasData}
+                                                >
+                                                    <ChevronDown
+                                                        className={`w-5 h-5 text-cyber-text-muted transition-transform duration-200 ${
+                                                            expandedPlayers.has(player.playerIndex) ? 'rotate-180' : ''
+                                                        }`}
+                                                    />
+                                                </button>
+                                            );
+                                        })()}
+                                    </td>
                                 </motion.tr>
+
+                                {/* Expandable Details Row */}
+                                {isExpanded && (
+                                    <tr className="bg-cyber-surface-light/20 border-b border-cyber-border/50">
+                                        <td colSpan={8} className="px-4 py-3">
+                                            <div className="pl-8 space-y-4">
+                                                {/* Item Build Timeline */}
+                                                {player.purchaseLog && player.purchaseLog.length > 0 && (
+                                                    <div>
+                                                        <p className="text-xs text-cyber-text-muted mb-2 font-medium">Item Build</p>
+                                                        <ItemPurchaseTimeline purchaseLog={player.purchaseLog} />
+                                                    </div>
+                                                )}
+
+                                                {/* Skill Order */}
+                                                {player.abilityUpgrades && player.abilityUpgrades.length > 0 && (
+                                                    <div>
+                                                        <p className="text-xs text-cyber-text-muted mb-2 font-medium">Skill Order</p>
+                                                        <SkillOrderTimeline abilityUpgrades={player.abilityUpgrades} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                                </React.Fragment>
                             );
                         })}
                     </tbody>

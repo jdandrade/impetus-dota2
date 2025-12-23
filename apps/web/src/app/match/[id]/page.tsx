@@ -26,6 +26,7 @@ import {
 import { transformMatchToPayload } from "@/lib/transformer";
 import { getMatchImp, type CalculateIMPResponse } from "@/lib/imp-client";
 import Scoreboard from "@/components/match/Scoreboard";
+import NetWorthGraph from "@/components/match/NetWorthGraph";
 import { type Role } from "@/components/match/RoleIcon";
 import { useMatchHistory } from "@/hooks/useMatchHistory";
 
@@ -48,6 +49,10 @@ interface PlayerScore {
     // Player identity
     personaname?: string;
     rankTier?: number | null;
+    // Item purchase timeline (parsed matches only)
+    purchaseLog?: Array<{ time: number; key: string }>;
+    // Skill order (parsed matches only)
+    abilityUpgrades?: number[];
     // IMP result
     impResult: CalculateIMPResponse | null;
     error: string | null;
@@ -82,6 +87,7 @@ export default function MatchPage() {
     const [loadingState, setLoadingState] = useState<LoadingState>("idle");
     const [matchData, setMatchData] = useState<OpenDotaMatch | null>(null);
     const [playerScores, setPlayerScores] = useState<PlayerScore[]>([]);
+    const [enrichedPlayers, setEnrichedPlayers] = useState<OpenDotaPlayer[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
     const [parseRequested, setParseRequested] = useState(false);
@@ -112,14 +118,15 @@ export default function MatchPage() {
             setProgress(20);
 
             // Step 1b: Enrich players with missing names (fetches from /players endpoint)
-            const enrichedPlayers = await enrichPlayerProfiles(match.players);
+            const enriched = await enrichPlayerProfiles(match.players);
+            setEnrichedPlayers(enriched);
             setProgress(30);
 
             // Check if match is fully parsed (has player data)
-            setIsFullyParsed(isMatchFullyParsed(enrichedPlayers));
+            setIsFullyParsed(isMatchFullyParsed(enriched));
 
             // Initialize player scores with role detection
-            const initialScores: PlayerScore[] = enrichedPlayers.map((p, index) => ({
+            const initialScores: PlayerScore[] = enriched.map((p, index) => ({
                 playerIndex: index,
                 heroId: p.hero_id,
                 heroName: getHeroName(p.hero_id),
@@ -134,10 +141,14 @@ export default function MatchPage() {
                 towerDamage: p.tower_damage,
                 items: [p.item_0, p.item_1, p.item_2, p.item_3, p.item_4, p.item_5],
                 itemNeutral: p.item_neutral,
-                role: detectRoleByNetWorth(p, enrichedPlayers),
+                role: detectRoleByNetWorth(p, enriched),
                 // Player identity (now enriched)
                 personaname: p.personaname,
                 rankTier: p.rank_tier,
+                // Item purchase timeline
+                purchaseLog: p.purchase_log,
+                // Skill order
+                abilityUpgrades: p.ability_upgrades_arr,
                 impResult: null,
                 error: null,
             }));
@@ -379,6 +390,9 @@ export default function MatchPage() {
                                 players={direPlayers}
                                 mvpPlayerIndex={mvpPlayerIndex}
                             />
+
+                            {/* Gold Advantage Graph */}
+                            <NetWorthGraph players={enrichedPlayers} />
                         </motion.div>
                     );
                 })()}

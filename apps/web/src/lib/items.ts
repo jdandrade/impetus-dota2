@@ -316,3 +316,21 @@ export function getItemDisplayName(itemId: number): string {
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 }
+
+/**
+ * Get item image URL from internal item name (e.g., "tango", "boots").
+ * Used for purchase_time data which uses internal names.
+ */
+export function getItemImageUrlByName(itemName: string): string {
+    return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/${itemName}.png`;
+}
+
+/**
+ * Convert snake_case item name to display name.
+ */
+export function getDisplayNameFromItemName(itemName: string): string {
+    return itemName
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+}

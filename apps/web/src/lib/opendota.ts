@@ -41,6 +41,10 @@ export interface OpenDotaPlayer {
     // Player identity
     personaname?: string;
     rank_tier?: number | null;
+    // Time series data (parsed matches only)
+    gold_t?: number[];
+    purchase_log?: Array<{ time: number; key: string }>;  // Array of item purchases in order
+    ability_upgrades_arr?: number[];  // Array of ability IDs in skill order
     // Derived/computed fields
     isRadiant: boolean;
 }
@@ -555,6 +559,9 @@ export async function getMatchDetails(matchId: string): Promise<OpenDotaMatch> {
         // Player identity
         personaname: (p.personaname as string | undefined) ?? undefined,
         rank_tier: (p.rank_tier as number | null) ?? null,
+        gold_t: (p.gold_t as number[] | undefined) ?? undefined,
+        purchase_log: (p.purchase_log as Array<{ time: number; key: string }> | undefined) ?? undefined,
+        ability_upgrades_arr: (p.ability_upgrades_arr as number[] | undefined) ?? undefined,
         // Player slots 0-127 are Radiant, 128-255 are Dire
         isRadiant: ((p.player_slot as number) ?? 0) < 128,
     }));
@@ -685,5 +692,136 @@ export function calculatePlayerBenchmarks(
         hero_healing_per_min: calculatePercentile(player.hero_healing / durationMinutes, b.hero_healing_per_min),
         tower_damage: calculatePercentile(player.tower_damage, b.tower_damage),
     };
+}
+
+/**
+ * Player profile response from OpenDota /players/{account_id} endpoint.
+ */
+export interface PlayerProfile {
+    account_id: number;
+    personaname: string;
+    avatar: string;
+    avatarfull: string;
+    profileurl: string;
+    rank_tier: number | null;
+    leaderboard_rank: number | null;
+}
+
+/**
+ * Recent match from OpenDota /players/{account_id}/recentMatches endpoint.
+ */
+export interface PlayerRecentMatch {
+    match_id: number;
+    player_slot: number;
+    radiant_win: boolean;
+    duration: number;
+    game_mode: number;
+    hero_id: number;
+    start_time: number;
+    kills: number;
+    deaths: number;
+    assists: number;
+}
+
+/**
+ * Fetch full player profile from OpenDota.
+ * Returns profile info including avatar.
+ */
+export async function getPlayerFullProfile(accountId: string): Promise<PlayerProfile | null> {
+    try {
+        const response = await fetch(`${OPENDOTA_API_URL}/players/${accountId}`);
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        return {
+            account_id: data.profile?.account_id || parseInt(accountId),
+            personaname: data.profile?.personaname || "Unknown Player",
+            avatar: data.profile?.avatar || "",
+            avatarfull: data.profile?.avatarfull || "",
+            profileurl: data.profile?.profileurl || "",
+            rank_tier: data.rank_tier || null,
+            leaderboard_rank: data.leaderboard_rank || null,
+        };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Fetch player's recent matches from OpenDota.
+ * @param accountId - Steam32 account ID
+ * @param limit - Number of matches to fetch (default 20)
+ * @param offsetMatchId - If provided, fetch matches older than this match ID
+ */
+export async function getPlayerRecentMatches(
+    accountId: string,
+    limit: number = 20,
+    offsetMatchId?: number
+): Promise<PlayerRecentMatch[]> {
+    try {
+        // Use the /matches endpoint with date filter for pagination
+        // recentMatches doesn't support offset, so we use the matches endpoint
+        let url = `${OPENDOTA_API_URL}/players/${accountId}/matches?limit=${limit}`;
+
+        if (offsetMatchId) {
+            // Filter to matches with ID less than the offset (older matches)
+            url += `&less_than_match_id=${offsetMatchId}`;
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) return [];
+
+        const data = await response.json();
+        return data.map((m: Record<string, unknown>) => ({
+            match_id: m.match_id as number,
+            player_slot: m.player_slot as number,
+            radiant_win: m.radiant_win as boolean,
+            duration: m.duration as number,
+            game_mode: m.game_mode as number,
+            hero_id: m.hero_id as number,
+            start_time: m.start_time as number,
+            kills: m.kills as number,
+            deaths: m.deaths as number,
+            assists: m.assists as number,
+        }));
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Convert Steam64 ID to Steam32 account ID.
+ * Steam32 = Steam64 - 76561197960265728
+ */
+export function steam64ToSteam32(steam64: string): string {
+    const steam64BigInt = BigInt(steam64);
+    const steam32 = steam64BigInt - BigInt("76561197960265728");
+    return steam32.toString();
+}
+
+/**
+ * Win/Loss stats from OpenDota.
+ */
+export interface PlayerWinLoss {
+    win: number;
+    lose: number;
+}
+
+/**
+ * Fetch player's overall win/loss stats from OpenDota.
+ */
+export async function getPlayerWinLoss(accountId: string): Promise<PlayerWinLoss> {
+    try {
+        const response = await fetch(`${OPENDOTA_API_URL}/players/${accountId}/wl`);
+        if (!response.ok) return { win: 0, lose: 0 };
+
+        const data = await response.json();
+        return {
+            win: data.win || 0,
+            lose: data.lose || 0,
+        };
+    } catch {
+        return { win: 0, lose: 0 };
+    }
 }
 
