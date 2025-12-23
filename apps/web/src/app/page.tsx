@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   Zap,
   TrendingUp,
@@ -17,8 +18,15 @@ import {
   Github,
   Sparkles,
   Gamepad2,
+  Crown,
 } from "lucide-react";
 import { useMatchHistory } from "@/hooks/useMatchHistory";
+import {
+  getPlayerFullProfile,
+  getPlayerTodayMatchCount,
+  steam64ToSteam32,
+  type PlayerProfile,
+} from "@/lib/opendota";
 
 // Default example matches (shown when no history)
 const DEFAULT_MATCHES = ["8616515910", "8612546740", "8615000000"];
@@ -67,12 +75,66 @@ const NEWS_ITEMS = [
   },
 ];
 
+interface AddictedPlayerOfDay {
+  player: { steam64: string; name: string };
+  profile: PlayerProfile | null;
+  gamesPlayed: number;
+}
+
 export default function Home() {
   const router = useRouter();
   const [matchId, setMatchId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { history, addToHistory, isHydrated } = useMatchHistory();
+
+  // Most addicted player of the day
+  const [addictedOfDay, setAddictedOfDay] = useState<AddictedPlayerOfDay | null>(null);
+  const [loadingAddict, setLoadingAddict] = useState(true);
+
+  useEffect(() => {
+    async function fetchMostAddictedToday() {
+      setLoadingAddict(true);
+
+      try {
+        // Fetch today's game count for all players in parallel
+        const results = await Promise.all(
+          ADDICTED_PLAYERS.map(async (player) => {
+            const accountId = steam64ToSteam32(player.steam64);
+            const gamesPlayed = await getPlayerTodayMatchCount(accountId);
+            return { player, gamesPlayed };
+          })
+        );
+
+        // Find the player with most games today
+        const mostAddicted = results.reduce((max, curr) =>
+          curr.gamesPlayed > max.gamesPlayed ? curr : max
+        );
+
+        // Only show if they played at least 1 game today
+        if (mostAddicted.gamesPlayed > 0) {
+          // Fetch their profile for the avatar
+          const accountId = steam64ToSteam32(mostAddicted.player.steam64);
+          const profile = await getPlayerFullProfile(accountId);
+
+          setAddictedOfDay({
+            player: mostAddicted.player,
+            profile,
+            gamesPlayed: mostAddicted.gamesPlayed,
+          });
+        } else {
+          setAddictedOfDay(null);
+        }
+      } catch (err) {
+        console.error("Failed to fetch most addicted player:", err);
+        setAddictedOfDay(null);
+      } finally {
+        setLoadingAddict(false);
+      }
+    }
+
+    fetchMostAddictedToday();
+  }, []);
 
   const handleAnalyze = async () => {
     if (!matchId.trim()) return;
@@ -185,10 +247,90 @@ export default function Home() {
               {error}
             </motion.p>
           )}
+        </motion.div>
 
-          <p className="mt-3 text-sm text-cyber-text-muted text-center">
-            Fetches live data from OpenDota API • Full team scoreboard with IMP scores
-          </p>
+        {/* Nerd of the Day */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.32 }}
+          className="text-center mb-12"
+        >
+          <div className="inline-flex items-center gap-2 mb-4">
+            <Crown className="w-4 h-4 text-yellow-400" />
+            <h3 className="text-sm font-semibold text-cyber-text-muted uppercase tracking-wider">
+              Nerd of the Day
+            </h3>
+          </div>
+
+          {loadingAddict ? (
+            <div className="flex justify-center">
+              <div className="glass rounded-2xl p-6 inline-flex items-center gap-3">
+                <Loader2 className="w-5 h-5 animate-spin text-yellow-400" />
+                <span className="text-cyber-text-muted">Finding today&apos;s addict...</span>
+              </div>
+            </div>
+          ) : addictedOfDay ? (
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex justify-center"
+            >
+              <button
+                onClick={() => router.push(`/player/${addictedOfDay.player.steam64}`)}
+                className="glass rounded-2xl p-6 hover:bg-cyber-surface-light/50 transition-all group"
+              >
+                <div className="flex flex-col items-center gap-3">
+                  {/* Crown */}
+                  <motion.div
+                    initial={{ y: -10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.2, type: "spring" }}
+                  >
+                    <Crown className="w-8 h-8 text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]" />
+                  </motion.div>
+
+                  {/* Avatar */}
+                  <div className="relative w-20 h-20 rounded-full overflow-hidden bg-cyber-surface-light border-2 border-yellow-400/50 group-hover:border-yellow-400 transition-colors">
+                    {addictedOfDay.profile?.avatarfull ? (
+                      <Image
+                        src={addictedOfDay.profile.avatarfull}
+                        alt={addictedOfDay.player.name}
+                        fill
+                        className="object-cover"
+                        sizes="80px"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Users className="w-10 h-10 text-cyber-text-muted" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Name */}
+                  <span className="text-lg font-bold text-cyber-text group-hover:text-yellow-400 transition-colors">
+                    {addictedOfDay.player.name}
+                  </span>
+
+                  {/* Games count */}
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-400/20 border border-yellow-400/30">
+                    <Gamepad2 className="w-4 h-4 text-yellow-400" />
+                    <span className="text-sm font-semibold text-yellow-400">
+                      {addictedOfDay.gamesPlayed} game{addictedOfDay.gamesPlayed !== 1 ? "s" : ""} today
+                    </span>
+                  </div>
+                </div>
+              </button>
+            </motion.div>
+          ) : (
+            <div className="flex justify-center">
+              <div className="glass rounded-2xl p-6 inline-flex items-center gap-3">
+                <Gamepad2 className="w-5 h-5 text-cyber-text-muted" />
+                <span className="text-cyber-text-muted">No games played today yet</span>
+              </div>
+            </div>
+          )}
         </motion.div>
 
         {/* Recent Matches */}

@@ -808,6 +808,37 @@ export interface PlayerWinLoss {
 }
 
 /**
+ * Get start of today in Unix timestamp (seconds).
+ */
+function getTodayStartTimestamp(): number {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.floor(startOfDay.getTime() / 1000);
+}
+
+/**
+ * Fetch count of matches a player has played today.
+ * @param accountId - Steam32 account ID
+ * @returns Number of matches played today
+ */
+export async function getPlayerTodayMatchCount(accountId: string): Promise<number> {
+    try {
+        const todayStart = getTodayStartTimestamp();
+        const response = await fetch(
+            `${OPENDOTA_API_URL}/players/${accountId}/matches?date=1&limit=50`
+        );
+        if (!response.ok) return 0;
+
+        const data = await response.json();
+        // Filter matches that started today
+        const todayMatches = data.filter((m: { start_time: number }) => m.start_time >= todayStart);
+        return todayMatches.length;
+    } catch {
+        return 0;
+    }
+}
+
+/**
  * Fetch player's overall win/loss stats from OpenDota.
  */
 export async function getPlayerWinLoss(accountId: string): Promise<PlayerWinLoss> {
