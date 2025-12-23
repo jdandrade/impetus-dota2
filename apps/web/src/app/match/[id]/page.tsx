@@ -49,6 +49,7 @@ interface PlayerScore {
     role: Role;       // Detected role based on net worth
     // Player identity
     personaname?: string;
+    accountId?: number | null;
     rankTier?: number | null;
     // Item purchase timeline (parsed matches only)
     purchaseLog?: Array<{ time: number; key: string }>;
@@ -126,6 +127,7 @@ export default function MatchPage() {
                 role: detectRole(p, enriched),
                 // Player identity (now enriched)
                 personaname: p.personaname,
+                accountId: p.account_id,
                 rankTier: p.rank_tier,
                 // Item purchase timeline
                 purchaseLog: p.purchase_log,

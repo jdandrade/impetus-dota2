@@ -3,9 +3,10 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
+import Link from "next/link";
 import { Shield, Swords, Trophy, Skull, Target, Coins, Zap, Crown, Crosshair, EyeOff, ChevronDown, ChevronRight } from "lucide-react";
 import type { CalculateIMPResponse } from "@/lib/imp-client";
-import { getHeroImageUrl, getRankImageUrl, getRankName } from "@/lib/opendota";
+import { getHeroImageUrl, getRankImageUrl, getRankName, steam32ToSteam64 } from "@/lib/opendota";
 import { getItemImageUrl, getItemDisplayName, getItemImageUrlByName, getDisplayNameFromItemName } from "@/lib/items";
 import { isTalent } from "@/lib/abilities";
 import RoleIcon, { type Role } from "./RoleIcon";
@@ -28,6 +29,7 @@ interface PlayerScore {
     role: Role;  // Detected role based on net worth
     // Player identity
     personaname?: string;
+    accountId?: number | null;  // For linking to player profile
     rankTier?: number | null;
     // Item purchase timeline (parsed matches only)
     purchaseLog?: Array<{ time: number; key: string }>;
@@ -418,199 +420,207 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                             const isExpanded = expandedPlayers.has(player.playerIndex);
                             return (
                                 <React.Fragment key={player.playerIndex}>
-                                <motion.tr
-                                    initial={{ opacity: 0, x: isRadiant ? -20 : 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    transition={{ delay: index * 0.08 }}
-                                    className={`border-b border-cyber-border/50 hover:bg-cyber-surface-light/40 transition-colors
+                                    <motion.tr
+                                        initial={{ opacity: 0, x: isRadiant ? -20 : 20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: index * 0.08 }}
+                                        className={`border-b border-cyber-border/50 hover:bg-cyber-surface-light/40 transition-colors
                                         ${player.impResult ? getScoreBg(player.impResult.data.imp_score) : ""}
                                         ${isMVP ? "bg-yellow-500/10" : ""}
                                         ${isExpanded ? "border-b-0" : ""}`}
-                                >
-                                    {/* Hero + Player Identity */}
-                                    <td className="py-2 px-4">
-                                        <div className="flex items-center gap-3">
-                                            {/* Role Icon */}
-                                            <RoleIcon role={player.role} size={18} />
-                                            {/* Hero Portrait */}
-                                            <div className="relative w-14 h-8 rounded overflow-hidden bg-cyber-surface-light flex-shrink-0">
-                                                <Image
-                                                    src={getHeroImageUrl(player.heroId, "portrait")}
-                                                    alt={player.heroName}
-                                                    fill
-                                                    className="object-cover object-top"
-                                                    sizes="56px"
-                                                    unoptimized
-                                                />
-                                            </div>
-                                            {/* Player Info */}
-                                            <div className="flex flex-col min-w-0">
-                                                {/* Player Name Row */}
-                                                <div className="flex items-center gap-1.5">
-                                                    {/* Rank Medal + Stars */}
-                                                    {player.rankTier && player.rankTier > 0 && (
-                                                        <div
-                                                            className="flex items-center gap-0.5 flex-shrink-0"
-                                                            title={getRankName(player.rankTier)}
-                                                        >
-                                                            <div className="relative w-5 h-5">
-                                                                <Image
-                                                                    src={getRankImageUrl(player.rankTier) || ""}
-                                                                    alt={getRankName(player.rankTier)}
-                                                                    fill
-                                                                    className="object-contain"
-                                                                    sizes="20px"
-                                                                    unoptimized
-                                                                />
-                                                            </div>
-                                                            {/* Stars indicator */}
-                                                            <span className="text-[10px] text-yellow-400 font-bold">
-                                                                {player.rankTier % 10 || ""}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                    {/* MVP Crown */}
-                                                    {isMVP && (
-                                                        <motion.div
-                                                            initial={{ scale: 0, rotate: -30 }}
-                                                            animate={{ scale: 1, rotate: 0 }}
-                                                            transition={{ type: "spring", delay: 0.5 }}
-                                                        >
-                                                            <Crown className="w-4 h-4 text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]" />
-                                                        </motion.div>
-                                                    )}
-                                                    {/* Player Name */}
-                                                    {player.personaname ? (
-                                                        <span className={`font-semibold text-sm truncate max-w-[120px] ${isMVP ? "text-yellow-300" : "text-white"}`}>
-                                                            {player.personaname}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="flex items-center gap-1 text-cyber-text-muted">
-                                                            <EyeOff className="w-3 h-3" />
-                                                            <span className="text-sm">Anonymous</span>
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                {/* Hero Name Row */}
-                                                <span className="text-xs text-cyber-text-muted truncate max-w-[140px]">
-                                                    {player.heroName}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </td>
-
-                                    {/* K/D/A */}
-                                    <td className="text-center py-2 px-2">
-                                        <span className="font-mono text-sm">
-                                            <span className="text-green-400 font-semibold">{player.kills}</span>
-                                            <span className="text-cyber-text-muted">/</span>
-                                            <span className="text-red-400 font-semibold">{player.deaths}</span>
-                                            <span className="text-cyber-text-muted">/</span>
-                                            <span className="text-teal-400">{player.assists}</span>
-                                        </span>
-                                    </td>
-
-                                    {/* Items */}
-                                    <td className="py-2 px-2">
-                                        <ItemRow items={player.items} itemNeutral={player.itemNeutral} />
-                                    </td>
-
-                                    {/* GPM */}
-                                    <td className="text-center py-2 px-2">
-                                        <span className="font-mono text-yellow-400">{player.gpm}</span>
-                                    </td>
-
-                                    {/* Hero Damage */}
-                                    <td className="text-center py-2 px-2">
-                                        <span className="font-mono text-orange-400">
-                                            {formatNumber(player.heroDamage)}
-                                        </span>
-                                    </td>
-
-                                    {/* Net Worth */}
-                                    <td className="text-center py-2 px-2">
-                                        <span className="font-mono text-yellow-500">
-                                            {formatNumber(player.netWorth)}
-                                        </span>
-                                    </td>
-
-                                    {/* IMP Score - Stratz Style */}
-                                    <td className="text-center py-2 px-4">
-                                        {player.impResult ? (
-                                            <div className="flex items-center justify-center gap-2">
-                                                <span
-                                                    className={`font-black text-2xl tabular-nums ${getScoreColor(
-                                                        player.impResult.data.imp_score
-                                                    )}`}
-                                                >
-                                                    {formatScore(player.impResult.data.imp_score)}
-                                                </span>
-                                                <span
-                                                    className={`text-xs font-bold px-1.5 py-0.5 rounded ${GRADE_COLORS[player.impResult.data.grade]
-                                                        } ${GRADE_BG[player.impResult.data.grade]}`}
-                                                >
-                                                    {player.impResult.data.grade}
-                                                </span>
-                                            </div>
-                                        ) : player.error ? (
-                                            <span className="text-red-400 text-sm">Error</span>
-                                        ) : (
-                                            <span className="text-cyber-text-muted">--</span>
-                                        )}
-                                    </td>
-
-                                    {/* Expand Button */}
-                                    <td className="text-center py-2 pr-2">
-                                        {(() => {
-                                            const hasData = (player.purchaseLog && player.purchaseLog.length > 0) ||
-                                                           (player.abilityUpgrades && player.abilityUpgrades.length > 0);
-                                            return (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        toggleExpanded(player.playerIndex);
-                                                    }}
-                                                    className={`p-1 rounded hover:bg-cyber-surface-light/50 transition-colors ${
-                                                        !hasData ? 'opacity-30 cursor-not-allowed' : ''
-                                                    }`}
-                                                    title={hasData ? "View build details" : "Build details not available (match not parsed)"}
-                                                    disabled={!hasData}
-                                                >
-                                                    <ChevronDown
-                                                        className={`w-5 h-5 text-cyber-text-muted transition-transform duration-200 ${
-                                                            expandedPlayers.has(player.playerIndex) ? 'rotate-180' : ''
-                                                        }`}
+                                    >
+                                        {/* Hero + Player Identity */}
+                                        <td className="py-2 px-4">
+                                            <div className="flex items-center gap-3">
+                                                {/* Role Icon */}
+                                                <RoleIcon role={player.role} size={18} />
+                                                {/* Hero Portrait */}
+                                                <div className="relative w-14 h-8 rounded overflow-hidden bg-cyber-surface-light flex-shrink-0">
+                                                    <Image
+                                                        src={getHeroImageUrl(player.heroId, "portrait")}
+                                                        alt={player.heroName}
+                                                        fill
+                                                        className="object-cover object-top"
+                                                        sizes="56px"
+                                                        unoptimized
                                                     />
-                                                </button>
-                                            );
-                                        })()}
-                                    </td>
-                                </motion.tr>
-
-                                {/* Expandable Details Row */}
-                                {isExpanded && (
-                                    <tr className="bg-cyber-surface-light/20 border-b border-cyber-border/50">
-                                        <td colSpan={8} className="px-4 py-3">
-                                            <div className="pl-8 space-y-4">
-                                                {/* Item Build Timeline */}
-                                                {player.purchaseLog && player.purchaseLog.length > 0 && (
-                                                    <div>
-                                                        <p className="text-xs text-cyber-text-muted mb-2 font-medium">Item Build</p>
-                                                        <ItemPurchaseTimeline purchaseLog={player.purchaseLog} />
+                                                </div>
+                                                {/* Player Info */}
+                                                <div className="flex flex-col min-w-0">
+                                                    {/* Player Name Row */}
+                                                    <div className="flex items-center gap-1.5">
+                                                        {/* Rank Medal + Stars */}
+                                                        {player.rankTier && player.rankTier > 0 && (
+                                                            <div
+                                                                className="flex items-center gap-0.5 flex-shrink-0"
+                                                                title={getRankName(player.rankTier)}
+                                                            >
+                                                                <div className="relative w-5 h-5">
+                                                                    <Image
+                                                                        src={getRankImageUrl(player.rankTier) || ""}
+                                                                        alt={getRankName(player.rankTier)}
+                                                                        fill
+                                                                        className="object-contain"
+                                                                        sizes="20px"
+                                                                        unoptimized
+                                                                    />
+                                                                </div>
+                                                                {/* Stars indicator */}
+                                                                <span className="text-[10px] text-yellow-400 font-bold">
+                                                                    {player.rankTier % 10 || ""}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {/* MVP Crown */}
+                                                        {isMVP && (
+                                                            <motion.div
+                                                                initial={{ scale: 0, rotate: -30 }}
+                                                                animate={{ scale: 1, rotate: 0 }}
+                                                                transition={{ type: "spring", delay: 0.5 }}
+                                                            >
+                                                                <Crown className="w-4 h-4 text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.6)]" />
+                                                            </motion.div>
+                                                        )}
+                                                        {/* Player Name */}
+                                                        {player.personaname ? (
+                                                            player.accountId ? (
+                                                                <Link
+                                                                    href={`/player/${steam32ToSteam64(player.accountId)}`}
+                                                                    className={`font-semibold text-sm truncate max-w-[120px] hover:underline transition-colors ${isMVP ? "text-yellow-300 hover:text-yellow-200" : "text-white hover:text-brand-primary"}`}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    {player.personaname}
+                                                                </Link>
+                                                            ) : (
+                                                                <span className={`font-semibold text-sm truncate max-w-[120px] ${isMVP ? "text-yellow-300" : "text-white"}`}>
+                                                                    {player.personaname}
+                                                                </span>
+                                                            )
+                                                        ) : (
+                                                            <span className="flex items-center gap-1 text-cyber-text-muted">
+                                                                <EyeOff className="w-3 h-3" />
+                                                                <span className="text-sm">Anonymous</span>
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                )}
-
-                                                {/* Skill Order */}
-                                                {player.abilityUpgrades && player.abilityUpgrades.length > 0 && (
-                                                    <div>
-                                                        <p className="text-xs text-cyber-text-muted mb-2 font-medium">Skill Order</p>
-                                                        <SkillOrderTimeline abilityUpgrades={player.abilityUpgrades} />
-                                                    </div>
-                                                )}
+                                                    {/* Hero Name Row */}
+                                                    <span className="text-xs text-cyber-text-muted truncate max-w-[140px]">
+                                                        {player.heroName}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </td>
-                                    </tr>
-                                )}
+
+                                        {/* K/D/A */}
+                                        <td className="text-center py-2 px-2">
+                                            <span className="font-mono text-sm">
+                                                <span className="text-green-400 font-semibold">{player.kills}</span>
+                                                <span className="text-cyber-text-muted">/</span>
+                                                <span className="text-red-400 font-semibold">{player.deaths}</span>
+                                                <span className="text-cyber-text-muted">/</span>
+                                                <span className="text-teal-400">{player.assists}</span>
+                                            </span>
+                                        </td>
+
+                                        {/* Items */}
+                                        <td className="py-2 px-2">
+                                            <ItemRow items={player.items} itemNeutral={player.itemNeutral} />
+                                        </td>
+
+                                        {/* GPM */}
+                                        <td className="text-center py-2 px-2">
+                                            <span className="font-mono text-yellow-400">{player.gpm}</span>
+                                        </td>
+
+                                        {/* Hero Damage */}
+                                        <td className="text-center py-2 px-2">
+                                            <span className="font-mono text-orange-400">
+                                                {formatNumber(player.heroDamage)}
+                                            </span>
+                                        </td>
+
+                                        {/* Net Worth */}
+                                        <td className="text-center py-2 px-2">
+                                            <span className="font-mono text-yellow-500">
+                                                {formatNumber(player.netWorth)}
+                                            </span>
+                                        </td>
+
+                                        {/* IMP Score - Stratz Style */}
+                                        <td className="text-center py-2 px-4">
+                                            {player.impResult ? (
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <span
+                                                        className={`font-black text-2xl tabular-nums ${getScoreColor(
+                                                            player.impResult.data.imp_score
+                                                        )}`}
+                                                    >
+                                                        {formatScore(player.impResult.data.imp_score)}
+                                                    </span>
+                                                    <span
+                                                        className={`text-xs font-bold px-1.5 py-0.5 rounded ${GRADE_COLORS[player.impResult.data.grade]
+                                                            } ${GRADE_BG[player.impResult.data.grade]}`}
+                                                    >
+                                                        {player.impResult.data.grade}
+                                                    </span>
+                                                </div>
+                                            ) : player.error ? (
+                                                <span className="text-red-400 text-sm">Error</span>
+                                            ) : (
+                                                <span className="text-cyber-text-muted">--</span>
+                                            )}
+                                        </td>
+
+                                        {/* Expand Button */}
+                                        <td className="text-center py-2 pr-2">
+                                            {(() => {
+                                                const hasData = (player.purchaseLog && player.purchaseLog.length > 0) ||
+                                                    (player.abilityUpgrades && player.abilityUpgrades.length > 0);
+                                                return (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleExpanded(player.playerIndex);
+                                                        }}
+                                                        className={`p-1 rounded hover:bg-cyber-surface-light/50 transition-colors ${!hasData ? 'opacity-30 cursor-not-allowed' : ''
+                                                            }`}
+                                                        title={hasData ? "View build details" : "Build details not available (match not parsed)"}
+                                                        disabled={!hasData}
+                                                    >
+                                                        <ChevronDown
+                                                            className={`w-5 h-5 text-cyber-text-muted transition-transform duration-200 ${expandedPlayers.has(player.playerIndex) ? 'rotate-180' : ''
+                                                                }`}
+                                                        />
+                                                    </button>
+                                                );
+                                            })()}
+                                        </td>
+                                    </motion.tr>
+
+                                    {/* Expandable Details Row */}
+                                    {isExpanded && (
+                                        <tr className="bg-cyber-surface-light/20 border-b border-cyber-border/50">
+                                            <td colSpan={8} className="px-4 py-3">
+                                                <div className="pl-8 space-y-4">
+                                                    {/* Item Build Timeline */}
+                                                    {player.purchaseLog && player.purchaseLog.length > 0 && (
+                                                        <div>
+                                                            <p className="text-xs text-cyber-text-muted mb-2 font-medium">Item Build</p>
+                                                            <ItemPurchaseTimeline purchaseLog={player.purchaseLog} />
+                                                        </div>
+                                                    )}
+
+                                                    {/* Skill Order */}
+                                                    {player.abilityUpgrades && player.abilityUpgrades.length > 0 && (
+                                                        <div>
+                                                            <p className="text-xs text-cyber-text-muted mb-2 font-medium">Skill Order</p>
+                                                            <SkillOrderTimeline abilityUpgrades={player.abilityUpgrades} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
                                 </React.Fragment>
                             );
                         })}

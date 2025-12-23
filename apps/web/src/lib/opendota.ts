@@ -897,6 +897,16 @@ export function steam64ToSteam32(steam64: string): string {
 }
 
 /**
+ * Convert Steam32 account ID to Steam64 ID.
+ * Steam64 = Steam32 + 76561197960265728
+ */
+export function steam32ToSteam64(steam32: number | string): string {
+    const steam32BigInt = BigInt(steam32);
+    const steam64 = steam32BigInt + BigInt("76561197960265728");
+    return steam64.toString();
+}
+
+/**
  * Win/Loss stats from OpenDota.
  */
 export interface PlayerWinLoss {
