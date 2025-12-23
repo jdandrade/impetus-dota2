@@ -67,12 +67,42 @@ class MatchData:
         seconds = self.duration_seconds % 60
         return f"{minutes}:{seconds:02d}"
     
+    def _normalize_lane(self, lane: int) -> int:
+        """
+        Normalize lane value to semantic meaning (safelane/mid/offlane).
+        
+        OpenDota lane values are relative to map position:
+          1 = Bottom lane
+          2 = Mid lane
+          3 = Top lane
+        
+        But safelane/offlane meaning depends on team:
+          Radiant: Bottom (1) = Safelane, Top (3) = Offlane
+          Dire: Top (3) = Safelane, Bottom (1) = Offlane
+        
+        Returns: 1 = Safelane, 2 = Mid, 3 = Offlane (normalized)
+        """
+        if lane == 2:
+            return 2  # Mid is always mid
+        
+        if self.is_radiant:
+            # Radiant: lane 1 (bot) = safelane, lane 3 (top) = offlane
+            return lane  # Already correct
+        else:
+            # Dire: lane 3 (top) = safelane, lane 1 (bot) = offlane
+            # Swap 1 and 3
+            if lane == 1:
+                return 3  # Dire bot = offlane
+            if lane == 3:
+                return 1  # Dire top = safelane
+            return lane
+    
     def get_role(self) -> str:
         """
         Detect player role using lane data + net worth heuristics.
         This is the unified role detection logic used across all systems.
         
-        Lane values from OpenDota:
+        Normalized lane values (after accounting for team side):
           1 = Safelane (can be Carry Pos 1 or Hard Support Pos 5)
           2 = Mid (Pos 2)
           3 = Offlane (can be Offlane Pos 3 or Soft Support Pos 4)
@@ -97,10 +127,13 @@ class MatchData:
         
         # If lane data is available, use it
         if self.lane is not None and 1 <= self.lane <= 3:
-            if self.lane == 2:
+            # Normalize lane to semantic meaning (safelane/offlane) based on team
+            normalized_lane = self._normalize_lane(self.lane)
+            
+            if normalized_lane == 2:
                 return "mid"
             
-            # For safelane (1) and offlane (3), compare net worth with lane partner
+            # Find lane partners (using raw lane value since they're on same team)
             lane_partners = [p for p in teammates if p.lane == self.lane]
             
             if len(lane_partners) >= 2:
@@ -108,12 +141,18 @@ class MatchData:
                 sorted_by_nw = sorted(lane_partners, key=lambda p: p.net_worth, reverse=True)
                 is_highest_nw = sorted_by_nw[0].hero_id == self.hero_id
                 
-                if self.lane == 1:
+                if normalized_lane == 1:
                     # Safelane: higher NW = carry, lower NW = hard support
                     return "carry" if is_highest_nw else "hard_support"
                 else:
                     # Offlane: higher NW = offlane, lower NW = soft support
                     return "offlane" if is_highest_nw else "support"
+            
+            # Only one player in lane - determine role based on normalized lane
+            if normalized_lane == 1:
+                return "carry"
+            if normalized_lane == 3:
+                return "offlane"
         
         # Fallback: pure net worth ranking within team
         sorted_by_nw = sorted(teammates, key=lambda p: p.net_worth, reverse=True)

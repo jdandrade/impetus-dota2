@@ -697,17 +697,45 @@ export function calculatePlayerBenchmarks(
         tower_damage: calculatePercentile(player.tower_damage, b.tower_damage),
     };
 }
-
 /**
  * Role type for position detection.
  */
 export type Role = "carry" | "mid" | "offlane" | "support" | "hard_support";
 
 /**
+ * Normalize lane value to semantic meaning (safelane/mid/offlane).
+ * 
+ * OpenDota lane values are relative to map position:
+ *   1 = Bottom lane
+ *   2 = Mid lane
+ *   3 = Top lane
+ * 
+ * But safelane/offlane meaning depends on team:
+ *   Radiant: Bottom (1) = Safelane, Top (3) = Offlane
+ *   Dire: Top (3) = Safelane, Bottom (1) = Offlane
+ * 
+ * This function returns: 1 = Safelane, 2 = Mid, 3 = Offlane (normalized)
+ */
+function normalizeLane(lane: number, isRadiant: boolean): number {
+    if (lane === 2) return 2; // Mid is always mid
+
+    if (isRadiant) {
+        // Radiant: lane 1 (bot) = safelane, lane 3 (top) = offlane
+        return lane; // Already correct
+    } else {
+        // Dire: lane 3 (top) = safelane, lane 1 (bot) = offlane
+        // Swap 1 and 3
+        if (lane === 1) return 3; // Dire bot = offlane
+        if (lane === 3) return 1; // Dire top = safelane
+        return lane;
+    }
+}
+
+/**
  * Detect player role using lane data + net worth heuristics.
  * This is the unified role detection logic used across all systems.
  * 
- * Lane values from OpenDota:
+ * Normalized lane values (after accounting for team side):
  *   1 = Safelane (can be Carry Pos 1 or Hard Support Pos 5)
  *   2 = Mid (Pos 2)
  *   3 = Offlane (can be Offlane Pos 3 or Soft Support Pos 4)
@@ -720,11 +748,14 @@ export function detectRole(player: OpenDotaPlayer, allPlayers: OpenDotaPlayer[])
 
     // If lane data is available, use it
     if (player.lane !== undefined && player.lane >= 1 && player.lane <= 3) {
-        if (player.lane === 2) {
+        // Normalize lane to semantic meaning (safelane/offlane) based on team
+        const normalizedLane = normalizeLane(player.lane, isRadiant);
+
+        if (normalizedLane === 2) {
             return "mid";
         }
 
-        // For safelane (1) and offlane (3), compare net worth with lane partner
+        // Find lane partners (using raw lane value since they're on same team)
         const lanePartners = teammates.filter((p) => p.lane === player.lane);
 
         if (lanePartners.length >= 2) {
@@ -732,7 +763,7 @@ export function detectRole(player: OpenDotaPlayer, allPlayers: OpenDotaPlayer[])
             const sortedByNW = [...lanePartners].sort((a, b) => b.net_worth - a.net_worth);
             const isHighestNW = sortedByNW[0].hero_id === player.hero_id;
 
-            if (player.lane === 1) {
+            if (normalizedLane === 1) {
                 // Safelane: higher NW = carry, lower NW = hard support
                 return isHighestNW ? "carry" : "hard_support";
             } else {
@@ -741,7 +772,9 @@ export function detectRole(player: OpenDotaPlayer, allPlayers: OpenDotaPlayer[])
             }
         }
 
-        // Only one player in lane (unusual), fall back to net worth ranking
+        // Only one player in lane - determine role based on normalized lane
+        if (normalizedLane === 1) return "carry";
+        if (normalizedLane === 3) return "offlane";
     }
 
     // Fallback: pure net worth ranking within team
