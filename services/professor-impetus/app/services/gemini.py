@@ -67,7 +67,7 @@ class GeminiClient:
             response = self.model.generate_content(
                 user_prompt,
                 generation_config=genai.GenerationConfig(
-                    max_output_tokens=1000,
+                    max_output_tokens=1500,
                     temperature=0.9,
                 )
             )
