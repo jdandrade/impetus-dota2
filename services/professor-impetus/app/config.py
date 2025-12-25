@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     )
     
     # Polling interval (5 min = 300s to stay under OpenDota rate limit)
-    # 7 players * 288 polls/day = 2016 calls/day (limit: 3000)
+    # 6 players * 2 calls (with name cache) * 288 polls/day = 3456 calls/day
+    # With exponential backoff on rate limits, should stay within limit (3000)
     poll_interval_seconds: int = Field(default=300, env="POLL_INTERVAL_SECONDS")
     
     class Config:
@@ -49,7 +50,6 @@ TRACKED_PLAYERS = {
     "76561198031378148": "rybur",
     "76561198044301453": "batatas",
     "76561197986252478": "gil",
-    "76561197970508852": "states",
     "76561197994301802": "mauzaum",
     "76561198014373442": "hory",
 }

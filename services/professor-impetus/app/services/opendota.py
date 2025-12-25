@@ -1,15 +1,76 @@
 """
 OpenDota API Client.
 Fetches latest match data for tracked players with FULL stats.
+
+Rate Limiting Strategy:
+- OpenDota free tier: 60 calls/minute, 3000 calls/day
+- We cache player names (rarely change) to reduce calls
+- On 429 errors, we use exponential backoff to avoid hammering the API
 """
 
+import asyncio
 import logging
+import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict
 
 import aiohttp
 
 logger = logging.getLogger(__name__)
+
+
+class RateLimiter:
+    """
+    Rate limiter with exponential backoff for OpenDota API.
+    When rate limited (429), backs off exponentially up to MAX_BACKOFF.
+    """
+    MAX_BACKOFF = 300  # 5 minutes max backoff
+    INITIAL_BACKOFF = 5  # Start with 5 seconds
+    
+    def __init__(self):
+        self._backoff = 0  # Current backoff in seconds
+        self._backoff_until = 0  # Timestamp when backoff ends
+        self._consecutive_429s = 0
+    
+    def is_backing_off(self) -> bool:
+        """Check if we're currently in backoff mode."""
+        return time.time() < self._backoff_until
+    
+    def get_wait_time(self) -> float:
+        """Get remaining wait time in seconds."""
+        return max(0, self._backoff_until - time.time())
+    
+    def record_success(self) -> None:
+        """Record a successful request - reset backoff."""
+        if self._consecutive_429s > 0:
+            logger.info("Rate limit cleared, resuming normal operation")
+        self._consecutive_429s = 0
+        self._backoff = 0
+        self._backoff_until = 0
+    
+    def record_rate_limit(self) -> float:
+        """Record a 429 error - increase backoff exponentially."""
+        self._consecutive_429s += 1
+        
+        if self._backoff == 0:
+            self._backoff = self.INITIAL_BACKOFF
+        else:
+            self._backoff = min(self._backoff * 2, self.MAX_BACKOFF)
+        
+        self._backoff_until = time.time() + self._backoff
+        logger.warning(
+            f"Rate limited! Backing off for {self._backoff}s "
+            f"(consecutive 429s: {self._consecutive_429s})"
+        )
+        return self._backoff
+
+
+# Global rate limiter instance
+_rate_limiter = RateLimiter()
+
+# Player name cache: account_id -> (name, timestamp)
+_player_name_cache: Dict[int, tuple] = {}
+PLAYER_NAME_CACHE_TTL = 86400  # 24 hours - names rarely change
 
 OPENDOTA_API_BASE = "https://api.opendota.com/api"
 
@@ -220,30 +281,41 @@ async def request_match_parse(match_id: int) -> bool:
             return False
 
 
-async def get_latest_match(account_id: int) -> Optional[MatchData]:
+async def get_latest_match(account_id: int, fallback_name: str = "Unknown") -> Optional[MatchData]:
     """
     Fetch the latest match for a player from OpenDota with FULL stats.
     
-    Steps:
-    1. Get latest match ID from /players/{id}/recentMatches
-    2. Fetch full match details from /matches/{match_id}
-    3. Find the player in the match and extract all stats
+    Optimizations:
+    - Uses cached player names (24h TTL) to reduce API calls
+    - Respects rate limits with exponential backoff
+    - On 429, backs off instead of continuing to hammer the API
     
     Args:
         account_id: Dota 2 account ID (NOT Steam ID 64)
+        fallback_name: Name to use if cache miss and API fails
     
     Returns:
         MatchData if found, None otherwise
     """
+    # Check if we're in backoff mode
+    if _rate_limiter.is_backing_off():
+        wait_time = _rate_limiter.get_wait_time()
+        logger.debug(f"Rate limited, waiting {wait_time:.1f}s before next request")
+        await asyncio.sleep(wait_time)
+    
     async with aiohttp.ClientSession() as session:
         try:
             # Step 1: Get the latest match ID
             matches_url = f"{OPENDOTA_API_BASE}/players/{account_id}/recentMatches"
             async with session.get(matches_url) as resp:
+                if resp.status == 429:
+                    _rate_limiter.record_rate_limit()
+                    return None
                 if resp.status != 200:
                     logger.error(f"OpenDota API error: {resp.status}")
                     return None
                 
+                _rate_limiter.record_success()
                 matches = await resp.json()
                 if not matches:
                     logger.warning(f"No matches found for account {account_id}")
@@ -251,19 +323,20 @@ async def get_latest_match(account_id: int) -> Optional[MatchData]:
                 
                 match_id = matches[0].get("match_id")
             
-            # Step 2: Get player profile for name
-            player_url = f"{OPENDOTA_API_BASE}/players/{account_id}"
-            async with session.get(player_url) as resp:
-                player_data = await resp.json() if resp.status == 200 else {}
-                player_name = player_data.get("profile", {}).get("personaname", "Unknown")
+            # Step 2: Get player name from cache or API
+            player_name = await _get_cached_player_name(session, account_id, fallback_name)
             
             # Step 3: Fetch FULL match details
             match_url = f"{OPENDOTA_API_BASE}/matches/{match_id}"
             async with session.get(match_url) as resp:
+                if resp.status == 429:
+                    _rate_limiter.record_rate_limit()
+                    return None
                 if resp.status != 200:
                     logger.error(f"Failed to fetch match {match_id}: {resp.status}")
                     return None
                 
+                _rate_limiter.record_success()
                 match_data = await resp.json()
             
             # Step 4: Find the player in the match
@@ -319,3 +392,40 @@ async def get_latest_match(account_id: int) -> Optional[MatchData]:
         except Exception as e:
             logger.exception(f"Error fetching match for account {account_id}: {e}")
             return None
+
+
+async def _get_cached_player_name(
+    session: aiohttp.ClientSession, 
+    account_id: int, 
+    fallback_name: str
+) -> str:
+    """
+    Get player name from cache or fetch from API.
+    Cache TTL is 24 hours since names rarely change.
+    """
+    now = time.time()
+    
+    # Check cache
+    if account_id in _player_name_cache:
+        cached_name, cached_time = _player_name_cache[account_id]
+        if now - cached_time < PLAYER_NAME_CACHE_TTL:
+            return cached_name
+    
+    # Fetch from API
+    player_url = f"{OPENDOTA_API_BASE}/players/{account_id}"
+    try:
+        async with session.get(player_url) as resp:
+            if resp.status == 429:
+                _rate_limiter.record_rate_limit()
+                return fallback_name
+            if resp.status == 200:
+                _rate_limiter.record_success()
+                player_data = await resp.json()
+                player_name = player_data.get("profile", {}).get("personaname", fallback_name)
+                _player_name_cache[account_id] = (player_name, now)
+                return player_name
+    except Exception as e:
+        logger.warning(f"Failed to fetch player name for {account_id}: {e}")
+    
+    return fallback_name
+

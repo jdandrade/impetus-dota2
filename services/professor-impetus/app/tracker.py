@@ -72,7 +72,7 @@ class MatchTracker:
                 continue
             
             # First run - fetch and ANNOUNCE current match
-            match = await get_latest_match(account_id)
+            match = await get_latest_match(account_id, fallback_name)
             if match:
                 logger.info(f"🆕 First run: Announcing current match for {fallback_name} ({match.match_id})")
                 
@@ -141,7 +141,7 @@ class MatchTracker:
         account_id = convert_steam_id64_to_account_id(steam_id)
         
         # Fetch latest match from OpenDota
-        match = await get_latest_match(account_id)
+        match = await get_latest_match(account_id, fallback_name)
         if not match:
             return
         
