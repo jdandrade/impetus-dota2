@@ -792,6 +792,40 @@ export function detectRole(player: OpenDotaPlayer, allPlayers: OpenDotaPlayer[])
 }
 
 /**
+ * Get a short role/position label based on lane data.
+ * Returns position number (1-5) or null if unknown.
+ * 
+ * For simplified display without full player data, we use lane as a proxy:
+ * - Mid lane = Pos 2
+ * - Safelane = Pos 1 (core) or 5 (support) - default to 1
+ * - Offlane = Pos 3 (core) or 4 (support) - default to 3
+ */
+export function getRoleLabel(lane: number | undefined, playerSlot: number): string | null {
+    if (lane === undefined || lane < 1 || lane > 3) return null;
+
+    // Determine if player is Radiant or Dire
+    const isRadiant = playerSlot < 128;
+
+    // Normalize lane to semantic meaning
+    let normalizedLane = lane;
+    if (lane !== 2) {
+        if (!isRadiant) {
+            // Dire: swap 1 and 3
+            if (lane === 1) normalizedLane = 3;
+            else if (lane === 3) normalizedLane = 1;
+        }
+    }
+
+    // Map normalized lane to position
+    switch (normalizedLane) {
+        case 1: return "1";  // Safelane - default to carry
+        case 2: return "2";  // Mid
+        case 3: return "3";  // Offlane - default to offlaner
+        default: return null;
+    }
+}
+
+/**
  * Player profile response from OpenDota /players/{account_id} endpoint.
  */
 export interface PlayerProfile {
@@ -818,6 +852,7 @@ export interface PlayerRecentMatch {
     kills: number;
     deaths: number;
     assists: number;
+    lane?: number;  // 1=bot, 2=mid, 3=top (needs normalization for team)
 }
 
 /**
@@ -880,6 +915,7 @@ export async function getPlayerRecentMatches(
             kills: m.kills as number,
             deaths: m.deaths as number,
             assists: m.assists as number,
+            lane: m.lane as number | undefined,
         }));
     } catch {
         return [];

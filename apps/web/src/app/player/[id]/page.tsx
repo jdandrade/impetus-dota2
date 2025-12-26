@@ -22,6 +22,7 @@ import {
     getHeroName,
     getRankImageUrl,
     getRankName,
+    getRoleLabel,
     steam64ToSteam32,
     type PlayerProfile,
     type PlayerRecentMatch,
@@ -336,7 +337,7 @@ export default function PlayerPage() {
                                 <div
                                     ref={scrollContainerRef}
                                     onScroll={handleScroll}
-                                    className="divide-y divide-cyber-border/50 max-h-[500px] overflow-y-auto"
+                                    className="divide-y divide-cyber-border/50 max-h-[calc(100vh-320px)] overflow-y-auto"
                                 >
                                     {matches.map((match, index) => {
                                         const won = isPlayerWin(match);
@@ -347,42 +348,51 @@ export default function PlayerPage() {
                                                 animate={{ opacity: 1, x: 0 }}
                                                 transition={{ delay: Math.min(index, 20) * 0.03 }}
                                                 onClick={() => router.push(`/match/${match.match_id}`)}
-                                                className={`p-4 flex items-center gap-4 hover:bg-cyber-surface-light/40
-                                                          transition-colors cursor-pointer ${won ? "border-l-4 border-l-green-500/50" : "border-l-4 border-l-red-500/50"
-                                                    }`}
+                                                className="p-3 flex items-center gap-3 hover:bg-cyber-surface-light/40
+                                                          transition-colors cursor-pointer"
                                             >
                                                 {/* Hero Portrait */}
-                                                <div className="relative w-16 h-9 rounded overflow-hidden bg-cyber-surface-light flex-shrink-0">
+                                                <div className="relative w-14 h-8 rounded overflow-hidden bg-cyber-surface-light flex-shrink-0">
                                                     <Image
                                                         src={getHeroImageUrl(match.hero_id, "portrait")}
                                                         alt={getHeroName(match.hero_id)}
                                                         fill
                                                         className="object-cover object-top"
-                                                        sizes="64px"
+                                                        sizes="56px"
                                                         unoptimized
                                                     />
                                                 </div>
 
-                                                {/* Hero Name & Result */}
+                                                {/* W/L Badge - Stratz style */}
+                                                <div className={`w-7 h-7 rounded flex items-center justify-center flex-shrink-0 font-bold text-sm ${won
+                                                    ? "bg-green-500 text-white"
+                                                    : "bg-red-500 text-white"
+                                                    }`}>
+                                                    {won ? "W" : "L"}
+                                                </div>
+
+                                                {/* Position Badge */}
+                                                {(() => {
+                                                    const roleLabel = getRoleLabel(match.lane, match.player_slot);
+                                                    return roleLabel ? (
+                                                        <div className="w-6 h-6 rounded bg-cyber-surface-light flex items-center justify-center flex-shrink-0 text-xs text-cyber-text-muted font-medium">
+                                                            {roleLabel}
+                                                        </div>
+                                                    ) : null;
+                                                })()}
+
+                                                {/* Hero Name & Time */}
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-semibold text-cyber-text truncate">
-                                                            {getHeroName(match.hero_id)}
-                                                        </span>
-                                                        <span className={`text-xs px-2 py-0.5 rounded ${won
-                                                                ? "bg-green-500/20 text-green-400"
-                                                                : "bg-red-500/20 text-red-400"
-                                                            }`}>
-                                                            {won ? "Won" : "Lost"}
-                                                        </span>
-                                                    </div>
-                                                    <div className="text-sm text-cyber-text-muted">
+                                                    <span className="font-medium text-cyber-text text-sm truncate block">
+                                                        {getHeroName(match.hero_id)}
+                                                    </span>
+                                                    <span className="text-xs text-cyber-text-muted">
                                                         {formatTimeAgo(match.start_time)} • {formatDuration(match.duration)}
-                                                    </div>
+                                                    </span>
                                                 </div>
 
                                                 {/* K/D/A */}
-                                                <div className="text-right">
+                                                <div className="text-right flex-shrink-0">
                                                     <span className="font-mono text-sm">
                                                         <span className="text-green-400">{match.kills}</span>
                                                         <span className="text-cyber-text-muted">/</span>
@@ -393,7 +403,7 @@ export default function PlayerPage() {
                                                 </div>
 
                                                 {/* Match ID */}
-                                                <div className="text-xs text-cyber-text-muted font-mono">
+                                                <div className="text-xs text-cyber-text-muted font-mono flex-shrink-0 hidden sm:block">
                                                     #{match.match_id}
                                                 </div>
                                             </motion.div>
