@@ -364,7 +364,7 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                 <span className="text-cyber-text-muted">/</span>
                                 <span className="text-red-400">{totals.deaths}</span>
                                 <span className="text-cyber-text-muted">/</span>
-                                <span className="text-teal-400">{totals.assists}</span>
+                                <span style={{ color: '#fac654' }}>{totals.assists}</span>
                             </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -518,7 +518,7 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                                 <span className="text-cyber-text-muted">/</span>
                                                 <span className="text-red-400 font-semibold">{player.deaths}</span>
                                                 <span className="text-cyber-text-muted">/</span>
-                                                <span className="text-teal-400">{player.assists}</span>
+                                                <span style={{ color: '#fac654' }}>{player.assists}</span>
                                             </span>
                                         </td>
 

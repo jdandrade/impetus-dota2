@@ -853,6 +853,104 @@ export interface PlayerRecentMatch {
     deaths: number;
     assists: number;
     lane?: number;  // 1=bot, 2=mid, 3=top (needs normalization for team)
+    hero_variant?: number;  // Facet choice (1-4)
+    average_rank?: number;  // Average rank of match
+    party_size?: number;
+}
+
+/**
+ * Enriched match data with additional details from full match fetch.
+ */
+export interface EnrichedMatch extends PlayerRecentMatch {
+    level?: number;
+    items?: number[];  // [item_0...item_5, item_neutral]
+    multi_kill?: number;  // Highest multi-kill (3=triple, 4=ultra, 5=rampage)
+    first_blood?: boolean;
+    net_worth_rank?: number;  // 1-5 rank on team by net worth
+    gold_per_min?: number;
+    xp_per_min?: number;
+}
+
+/**
+ * Get human-readable multi-kill name.
+ */
+export function getMultiKillName(multiKill: number): string | null {
+    switch (multiKill) {
+        case 3: return "Triple Kill";
+        case 4: return "Ultra Kill";
+        case 5: return "RAMPAGE";
+        default: return null;
+    }
+}
+
+/**
+ * Fetch enriched match data for a specific player.
+ * This makes an additional API call per match to get detailed stats.
+ */
+export async function getEnrichedMatchData(
+    matchId: number,
+    accountId: string
+): Promise<Partial<EnrichedMatch> | null> {
+    try {
+        const response = await fetch(`${OPENDOTA_API_URL}/matches/${matchId}`);
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        const accountIdNum = parseInt(accountId);
+
+        // Find the player in the match
+        const player = data.players?.find(
+            (p: { account_id: number }) => p.account_id === accountIdNum
+        );
+        if (!player) return null;
+
+        // Calculate net worth rank on team
+        const isRadiant = player.player_slot < 128;
+        const teammates = data.players.filter(
+            (p: { player_slot: number }) => (p.player_slot < 128) === isRadiant
+        );
+        const sortedByNW = [...teammates].sort(
+            (a: { net_worth: number }, b: { net_worth: number }) => b.net_worth - a.net_worth
+        );
+        const netWorthRank = sortedByNW.findIndex(
+            (p: { account_id: number }) => p.account_id === accountIdNum
+        ) + 1;
+
+        // Get highest multi-kill (from multi_kills object like {3: 1, 4: 0, 5: 0})
+        let highestMultiKill = 0;
+        if (player.multi_kills) {
+            const multiKills = player.multi_kills as Record<string, number>;
+            for (const [kill, count] of Object.entries(multiKills)) {
+                if (count > 0 && parseInt(kill) > highestMultiKill) {
+                    highestMultiKill = parseInt(kill);
+                }
+            }
+        }
+
+        // Check for first blood
+        const firstBlood = player.firstblood_claimed === 1;
+
+        return {
+            level: player.level,
+            items: [
+                player.item_0 || 0,
+                player.item_1 || 0,
+                player.item_2 || 0,
+                player.item_3 || 0,
+                player.item_4 || 0,
+                player.item_5 || 0,
+                player.item_neutral || 0,
+            ],
+            multi_kill: highestMultiKill > 2 ? highestMultiKill : undefined,
+            first_blood: firstBlood || undefined,
+            net_worth_rank: netWorthRank,
+            gold_per_min: player.gold_per_min,
+            xp_per_min: player.xp_per_min,
+        };
+    } catch (error) {
+        console.error(`Failed to fetch enriched data for match ${matchId}:`, error);
+        return null;
+    }
 }
 
 /**
@@ -916,6 +1014,9 @@ export async function getPlayerRecentMatches(
             deaths: m.deaths as number,
             assists: m.assists as number,
             lane: m.lane as number | undefined,
+            hero_variant: m.hero_variant as number | undefined,
+            average_rank: m.average_rank as number | undefined,
+            party_size: m.party_size as number | undefined,
         }));
     } catch {
         return [];

@@ -23,11 +23,15 @@ import {
     getRankImageUrl,
     getRankName,
     getRoleLabel,
+    getEnrichedMatchData,
+    getMultiKillName,
     steam64ToSteam32,
     type PlayerProfile,
     type PlayerRecentMatch,
     type PlayerWinLoss,
+    type EnrichedMatch,
 } from "@/lib/opendota";
+import { getItemImageUrl } from "@/lib/items";
 
 function formatDuration(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -73,6 +77,9 @@ export default function PlayerPage() {
     const [error, setError] = useState<string | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+    // Enriched match data (fetched separately)
+    const [enrichedData, setEnrichedData] = useState<Record<number, Partial<EnrichedMatch>>>({});
+
     const MATCHES_PER_PAGE = 20;
 
     useEffect(() => {
@@ -108,6 +115,45 @@ export default function PlayerPage() {
             loadPlayerData();
         }
     }, [accountId]);
+
+    // Fetch enriched data for matches (in parallel, limited batch)
+    useEffect(() => {
+        async function fetchEnrichedData() {
+            if (matches.length === 0) return;
+
+            // Only fetch for matches we don't have data for yet
+            const matchesToFetch = matches.filter(m => !enrichedData[m.match_id]);
+            if (matchesToFetch.length === 0) return;
+
+            // Fetch in parallel (limit to avoid rate limits)
+            const batchSize = 5;
+            for (let i = 0; i < matchesToFetch.length; i += batchSize) {
+                const batch = matchesToFetch.slice(i, i + batchSize);
+                const results = await Promise.all(
+                    batch.map(m => getEnrichedMatchData(m.match_id, accountId))
+                );
+
+                // Update state with results
+                const newData: Record<number, Partial<EnrichedMatch>> = {};
+                batch.forEach((match, idx) => {
+                    if (results[idx]) {
+                        newData[match.match_id] = results[idx]!;
+                    }
+                });
+
+                if (Object.keys(newData).length > 0) {
+                    setEnrichedData(prev => ({ ...prev, ...newData }));
+                }
+
+                // Small delay between batches to be nice to the API
+                if (i + batchSize < matchesToFetch.length) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+            }
+        }
+
+        fetchEnrichedData();
+    }, [matches, accountId, enrichedData]);
 
     // Load more matches when scrolling
     const loadMoreMatches = useCallback(async () => {
@@ -341,6 +387,7 @@ export default function PlayerPage() {
                                 >
                                     {matches.map((match, index) => {
                                         const won = isPlayerWin(match);
+                                        const enriched = enrichedData[match.match_id];
                                         return (
                                             <motion.div
                                                 key={match.match_id}
@@ -351,7 +398,7 @@ export default function PlayerPage() {
                                                 className="p-3 flex items-center gap-3 hover:bg-cyber-surface-light/40
                                                           transition-colors cursor-pointer"
                                             >
-                                                {/* Hero Portrait */}
+                                                {/* Hero Portrait with Level */}
                                                 <div className="relative w-14 h-8 rounded overflow-hidden bg-cyber-surface-light flex-shrink-0">
                                                     <Image
                                                         src={getHeroImageUrl(match.hero_id, "portrait")}
@@ -361,6 +408,12 @@ export default function PlayerPage() {
                                                         sizes="56px"
                                                         unoptimized
                                                     />
+                                                    {/* Level Badge */}
+                                                    {enriched?.level && (
+                                                        <div className="absolute bottom-0 left-0 w-5 h-4 bg-black/80 text-[10px] font-bold text-white flex items-center justify-center">
+                                                            {enriched.level}
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {/* W/L Badge - Stratz style */}
@@ -381,29 +434,97 @@ export default function PlayerPage() {
                                                     ) : null;
                                                 })()}
 
-                                                {/* Hero Name & Time */}
+                                                {/* Hero Name, Time & Achievement Badges */}
                                                 <div className="flex-1 min-w-0">
-                                                    <span className="font-medium text-cyber-text text-sm truncate block">
-                                                        {getHeroName(match.hero_id)}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium text-cyber-text text-sm truncate">
+                                                            {getHeroName(match.hero_id)}
+                                                        </span>
+                                                        {/* Achievement Badges */}
+                                                        {enriched?.multi_kill && getMultiKillName(enriched.multi_kill) && (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-medium">
+                                                                {getMultiKillName(enriched.multi_kill)}
+                                                            </span>
+                                                        )}
+                                                        {enriched?.first_blood && (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-medium">
+                                                                First Blood
+                                                            </span>
+                                                        )}
+                                                        {enriched?.net_worth_rank === 1 && (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-medium">
+                                                                Rich
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <span className="text-xs text-cyber-text-muted">
                                                         {formatTimeAgo(match.start_time)} • {formatDuration(match.duration)}
                                                     </span>
                                                 </div>
 
-                                                {/* K/D/A */}
-                                                <div className="text-right flex-shrink-0">
+                                                {/* Items */}
+                                                {enriched?.items && (
+                                                    <div className="flex gap-0.5 flex-shrink-0 items-center">
+                                                        {/* Main 6 items */}
+                                                        {enriched.items.slice(0, 6).map((itemId, i) => (
+                                                            <div key={i} className="w-6 h-5 rounded-sm bg-cyber-surface-dark overflow-hidden">
+                                                                {itemId > 0 && getItemImageUrl(itemId) && (
+                                                                    <Image
+                                                                        src={getItemImageUrl(itemId)!}
+                                                                        alt=""
+                                                                        width={24}
+                                                                        height={20}
+                                                                        className="object-cover"
+                                                                        unoptimized
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                        {/* Neutral item */}
+                                                        {enriched.items[6] > 0 && getItemImageUrl(enriched.items[6]) && (
+                                                            <div className="w-5 h-5 rounded-full bg-cyber-surface-dark overflow-hidden ml-1 border border-amber-500/50">
+                                                                <Image
+                                                                    src={getItemImageUrl(enriched.items[6])!}
+                                                                    alt=""
+                                                                    width={20}
+                                                                    height={20}
+                                                                    className="object-cover"
+                                                                    unoptimized
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* KDA & K/D/A */}
+                                                <div className="text-right flex-shrink-0 min-w-[70px]">
+                                                    {/* KDA Value */}
+                                                    {(() => {
+                                                        const kda = match.deaths === 0
+                                                            ? (match.kills + match.assists > 0 ? "perfect" : 0)
+                                                            : ((match.kills + match.assists) / match.deaths).toFixed(1);
+                                                        return (
+                                                            <div className="text-xs mb-0.5">
+                                                                {kda === "perfect" ? (
+                                                                    <span className="text-brand-primary font-bold">PERFECT</span>
+                                                                ) : (
+                                                                    <span className="text-cyber-text-muted">{kda} KDA</span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                    {/* K/D/A breakdown */}
                                                     <span className="font-mono text-sm">
                                                         <span className="text-green-400">{match.kills}</span>
                                                         <span className="text-cyber-text-muted">/</span>
                                                         <span className="text-red-400">{match.deaths}</span>
                                                         <span className="text-cyber-text-muted">/</span>
-                                                        <span className="text-teal-400">{match.assists}</span>
+                                                        <span style={{ color: '#fac654' }}>{match.assists}</span>
                                                     </span>
                                                 </div>
 
                                                 {/* Match ID */}
-                                                <div className="text-xs text-cyber-text-muted font-mono flex-shrink-0 hidden sm:block">
+                                                <div className="text-xs text-cyber-text-muted font-mono flex-shrink-0 hidden lg:block">
                                                     #{match.match_id}
                                                 </div>
                                             </motion.div>
