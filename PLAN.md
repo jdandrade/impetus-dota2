@@ -318,16 +318,6 @@ A step-by-step guide to get the "Hello World" integration running.
 
 ---
 
-### Phase 4: Real Algorithm (Next Iteration)
-
-> **Out of Scope for Walking Skeleton**
-
-- [ ] Implement actual OpenIMP scoring algorithm
-- [ ] Add role-based stat weighting
-- [ ] Integrate OpenDota match fetching
-- [ ] Add hero-specific normalization curves
-
----
 
 ## 4. Development Commands Cheatsheet
 
@@ -351,5 +341,5 @@ A step-by-step guide to get the "Hello World" integration running.
 
 ---
 
-*Document Version: 1.0*  
-*Last Updated: 2024-12-21*
+*Document Version: 1.1*  
+*Last Updated: 2024-12-27*
