@@ -32,6 +32,7 @@ import {
     type EnrichedMatch,
 } from "@/lib/opendota";
 import { getItemImageUrl } from "@/lib/items";
+import { getCachedMatchesForPlayer, cacheEnrichedMatch } from "@/lib/match-cache";
 
 function formatDuration(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -116,13 +117,23 @@ export default function PlayerPage() {
         }
     }, [accountId]);
 
-    // Fetch enriched data for matches (in parallel, limited batch)
+    // Fetch enriched data for matches (with localStorage caching)
     useEffect(() => {
         async function fetchEnrichedData() {
             if (matches.length === 0) return;
 
-            // Only fetch for matches we don't have data for yet
-            const matchesToFetch = matches.filter(m => !enrichedData[m.match_id]);
+            // First, load any cached data for this player
+            const cachedData = getCachedMatchesForPlayer(accountId);
+
+            // Merge cached data into state
+            if (Object.keys(cachedData).length > 0) {
+                setEnrichedData(prev => ({ ...cachedData, ...prev }));
+            }
+
+            // Find matches that are neither in state nor cache
+            const matchesToFetch = matches.filter(
+                m => !enrichedData[m.match_id] && !cachedData[m.match_id]
+            );
             if (matchesToFetch.length === 0) return;
 
             // Fetch in parallel (limit to avoid rate limits)
@@ -133,11 +144,13 @@ export default function PlayerPage() {
                     batch.map(m => getEnrichedMatchData(m.match_id, accountId))
                 );
 
-                // Update state with results
+                // Update state and cache with results
                 const newData: Record<number, Partial<EnrichedMatch>> = {};
                 batch.forEach((match, idx) => {
                     if (results[idx]) {
                         newData[match.match_id] = results[idx]!;
+                        // Cache the result
+                        cacheEnrichedMatch(match.match_id, accountId, results[idx]!);
                     }
                 });
 
