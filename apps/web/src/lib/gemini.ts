@@ -85,6 +85,9 @@ Keep the tone friendly but honest. Use Dota terminology. Keep it under 250 words
             generationConfig: {
                 temperature: 0.7,
                 maxOutputTokens: 2048,
+                thinkingConfig: {
+                    thinkingBudget: 0  // Disable thinking tokens - they consume output limit
+                }
             }
         }),
     });
