@@ -29,7 +29,9 @@ import { transformMatchToPayload } from "@/lib/transformer";
 import { getMatchImp, type CalculateIMPResponse } from "@/lib/imp-client";
 import Scoreboard from "@/components/match/Scoreboard";
 import NetWorthGraph from "@/components/match/NetWorthGraph";
+import CoachAnalysis from "@/components/match/CoachAnalysis";
 import { useMatchHistory } from "@/hooks/useMatchHistory";
+import { isTrackedPlayer, getTrackedPlayerName } from "@/lib/tracked-players";
 
 interface PlayerScore {
     playerIndex: number;
@@ -353,12 +355,51 @@ export default function MatchPage() {
                         }
                     });
 
+                    // Find tracked players in this match
+                    const trackedPlayersInMatch = playerScores
+                        .filter(p => p.accountId && isTrackedPlayer(p.accountId))
+                        .map(p => ({
+                            playerIndex: p.playerIndex,
+                            accountId: p.accountId!,
+                            displayName: getTrackedPlayerName(p.accountId) || p.personaname || "Unknown",
+                            heroId: p.heroId,
+                            heroName: p.heroName,
+                            role: p.role,
+                            isRadiant: p.isRadiant,
+                            kills: p.kills,
+                            deaths: p.deaths,
+                            assists: p.assists,
+                            gpm: p.gpm,
+                            xpm: p.xpm,
+                            netWorth: p.netWorth,
+                            heroDamage: p.heroDamage,
+                            towerDamage: p.towerDamage,
+                            items: p.items,
+                            itemNeutral: p.itemNeutral,
+                            impScore: p.impResult?.data.imp_score,
+                            impGrade: p.impResult?.data.grade,
+                        }));
+
+                    // Get all players for team context
+                    const allPlayersContext = playerScores.map(p => ({
+                        heroId: p.heroId,
+                        isRadiant: p.isRadiant,
+                    }));
+
                     return (
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             className="space-y-8"
                         >
+                            {/* AI Coach Analysis - Only for tracked players */}
+                            <CoachAnalysis
+                                trackedPlayers={trackedPlayersInMatch}
+                                radiantWin={matchData.radiant_win}
+                                duration={matchData.duration}
+                                allPlayers={allPlayersContext}
+                            />
+
                             {/* Radiant */}
                             <Scoreboard
                                 team="radiant"
