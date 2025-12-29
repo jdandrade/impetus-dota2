@@ -55,7 +55,8 @@ export async function generateCoachingAnalysis(
 - **Net Worth**: ${input.netWorth.toLocaleString()}
 - **Hero Damage**: ${input.heroDamage.toLocaleString()}
 - **Tower Damage**: ${input.towerDamage.toLocaleString()}
-- **Final Build**: ${itemList}${input.neutralItem ? ` + ${input.neutralItem}` : ""}
+- **Main Items (purchased)**: ${itemList}
+${input.neutralItem ? `- **Neutral Item (random drop)**: ${input.neutralItem}` : ""}
 ${input.impScore !== undefined ? `- **IMP Score**: ${input.impScore.toFixed(1)} (Grade: ${input.impGrade})` : ""}
 
 ## Team Context
@@ -66,7 +67,7 @@ ${input.impScore !== undefined ? `- **IMP Score**: ${input.impScore.toFixed(1)} 
 Write a personalized "How Can I Do Better?" analysis for ${input.playerName}. Be direct, specific, and actionable. Focus on:
 
 1. **Biggest Issue** - The #1 thing that hurt their performance (be specific)
-2. **Item Choices** - Were their items optimal against this enemy lineup? Suggest alternatives
+2. **Item Choices** - Were their MAIN ITEMS optimal against this enemy lineup? Suggest alternatives. (Note: Neutral items are random drops, don't suggest replacing them with purchasable items)
 3. **Game Sense** - Based on their stats, what playstyle mistakes might they have made?
 4. **Quick Win** - One specific, easy thing they can do next game to immediately improve
 
