@@ -84,7 +84,7 @@ Keep the tone friendly but honest. Use Dota terminology. Keep it under 250 words
             }],
             generationConfig: {
                 temperature: 0.7,
-                maxOutputTokens: 500,
+                maxOutputTokens: 2048,
             }
         }),
     });
