@@ -80,6 +80,7 @@ export default function PlayerPage() {
 
     // Enriched match data (fetched separately)
     const [enrichedData, setEnrichedData] = useState<Record<number, Partial<EnrichedMatch>>>({});
+    const fetchedMatchesRef = useRef<Set<number>>(new Set());
 
     const MATCHES_PER_PAGE = 20;
 
@@ -113,6 +114,8 @@ export default function PlayerPage() {
         }
 
         if (accountId) {
+            // Reset fetched matches ref when account changes
+            fetchedMatchesRef.current = new Set();
             loadPlayerData();
         }
     }, [accountId]);
@@ -125,16 +128,29 @@ export default function PlayerPage() {
             // First, load any cached data for this player
             const cachedData = getCachedMatchesForPlayer(accountId);
 
-            // Merge cached data into state
+            // Mark cached matches as "fetched" so we don't re-fetch them
+            Object.keys(cachedData).forEach(id => fetchedMatchesRef.current.add(Number(id)));
+
+            // Merge cached data into state (only if we have new cached data)
             if (Object.keys(cachedData).length > 0) {
-                setEnrichedData(prev => ({ ...cachedData, ...prev }));
+                setEnrichedData(prev => {
+                    const merged = { ...cachedData, ...prev };
+                    // Only update if there's actually new data
+                    if (Object.keys(merged).length !== Object.keys(prev).length) {
+                        return merged;
+                    }
+                    return prev;
+                });
             }
 
-            // Find matches that are neither in state nor cache
+            // Find matches that haven't been fetched yet (using ref, not state)
             const matchesToFetch = matches.filter(
-                m => !enrichedData[m.match_id] && !cachedData[m.match_id]
+                m => !fetchedMatchesRef.current.has(m.match_id)
             );
             if (matchesToFetch.length === 0) return;
+
+            // Mark these as being fetched (prevent duplicate fetches)
+            matchesToFetch.forEach(m => fetchedMatchesRef.current.add(m.match_id));
 
             // Fetch in parallel (limit to avoid rate limits)
             const batchSize = 5;
@@ -166,7 +182,7 @@ export default function PlayerPage() {
         }
 
         fetchEnrichedData();
-    }, [matches, accountId, enrichedData]);
+    }, [matches, accountId]); // Removed enrichedData from deps!
 
     // Load more matches when scrolling
     const loadMoreMatches = useCallback(async () => {
