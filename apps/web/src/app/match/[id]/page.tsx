@@ -30,6 +30,7 @@ import { getMatchImp, type CalculateIMPResponse } from "@/lib/imp-client";
 import Scoreboard from "@/components/match/Scoreboard";
 import NetWorthGraph from "@/components/match/NetWorthGraph";
 import CoachAnalysis from "@/components/match/CoachAnalysis";
+import LaneMatchups from "@/components/match/LaneMatchups";
 import { useMatchHistory } from "@/hooks/useMatchHistory";
 import { isTrackedPlayer, getTrackedPlayerName } from "@/lib/tracked-players";
 
@@ -415,6 +416,9 @@ export default function MatchPage() {
                                 players={direPlayers}
                                 mvpPlayerIndex={mvpPlayerIndex}
                             />
+
+                            {/* Lane Matchups */}
+                            <LaneMatchups players={enrichedPlayers} />
 
                             {/* Gold Advantage Graph */}
                             <NetWorthGraph players={enrichedPlayers} />
