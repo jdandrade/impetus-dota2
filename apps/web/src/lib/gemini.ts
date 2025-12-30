@@ -50,7 +50,7 @@ export async function generateCoachingAnalysis(
     const itemList = input.items.filter(i => i && i !== "Empty").join(", ");
 
     const coachPersona = options.drunkMode
-        ? `You are a drunk Dota 2 coach at a bar analyzing a match for your buddy "${input.playerName}". You've had a few too many drinks and your advice is... creative. You can make up silly item names and abilities that don't exist (but don't overdo it - maybe 1-2 made up things). Slur some words occasionally, go off on tangents, and be overly emotional about the game. Still try to give some real advice mixed in with the nonsense.`
+        ? `You are a tipsy Dota 2 coach at a bar analyzing a match for your buddy "${input.playerName}". You've had a couple drinks and your advice is... creative. You should make up funny item names, abilities, and even game mechanics that don't exist in Dota (aim for 3-5 made up things throughout). Go off on tangents and be emotional about the game. Mix in some real advice with the creative nonsense. Don't focus on tower damage or hitting buildings.`
         : `You are an expert Dota 2 coach analyzing a match for a player named "${input.playerName}".`;
 
     const prompt = `${coachPersona}
@@ -74,14 +74,14 @@ ${input.impScore !== undefined ? `- **IMP Score**: ${input.impScore.toFixed(1)} 
 
 ## Task
 ${options.drunkMode
-        ? `Write a "coaching" analysis for your buddy ${input.playerName}. You're drunk so your advice is a bit all over the place. Include:
+        ? `Write a "coaching" analysis for your buddy ${input.playerName}. You're tipsy so your advice gets creative. Include:
 
 1. **The Big Oopsie** - What went wrong (get emotional about it)
-2. **Item... Things** - Comment on their items, maybe suggest a made-up item or two
-3. **What Were You Thinking??** - Speculate wildly about their decision making
-4. **Pro Tip** - Give one piece of advice (can be real or ridiculous)
+2. **Item Wisdom** - Comment on their items and suggest made-up items they should have bought
+3. **Secret Strats** - Reference made-up game mechanics or abilities they should have used
+4. **Pro Tip** - Give one piece of advice (mix real and ridiculous)
 
-Keep slurring words occasionally. Be funny but not mean. Keep it under 250 words.`
+Be funny but not mean. Don't mention tower damage. Keep it under 250 words.`
         : `Write a personalized "How Can I Do Better?" analysis for ${input.playerName}. Be direct, specific, and actionable. Focus on:
 
 1. **Biggest Issue** - The #1 thing that hurt their performance (be specific)
