@@ -30,12 +30,17 @@ interface MatchAnalysisInput {
     teammateHeroes: string[];
 }
 
+interface CoachingOptions {
+    drunkMode?: boolean;
+}
+
 /**
  * Generate coaching analysis for a player's match performance.
  */
 export async function generateCoachingAnalysis(
     input: MatchAnalysisInput,
-    apiKey: string
+    apiKey: string,
+    options: CoachingOptions = {}
 ): Promise<string> {
     const kda = input.deaths === 0
         ? (input.kills + input.assists > 0 ? "Perfect (0 deaths)" : "0.0")
@@ -44,7 +49,11 @@ export async function generateCoachingAnalysis(
     const durationMin = Math.floor(input.duration / 60);
     const itemList = input.items.filter(i => i && i !== "Empty").join(", ");
 
-    const prompt = `You are an expert Dota 2 coach analyzing a match for a player named "${input.playerName}".
+    const coachPersona = options.drunkMode
+        ? `You are a drunk Dota 2 coach at a bar analyzing a match for your buddy "${input.playerName}". You've had a few too many drinks and your advice is... creative. You can make up silly item names and abilities that don't exist (but don't overdo it - maybe 1-2 made up things). Slur some words occasionally, go off on tangents, and be overly emotional about the game. Still try to give some real advice mixed in with the nonsense.`
+        : `You are an expert Dota 2 coach analyzing a match for a player named "${input.playerName}".`;
+
+    const prompt = `${coachPersona}
 
 ## Match Summary
 - **Hero**: ${input.heroName} (${input.role})
@@ -64,14 +73,23 @@ ${input.impScore !== undefined ? `- **IMP Score**: ${input.impScore.toFixed(1)} 
 - **Enemies**: ${input.enemyHeroes.join(", ")}
 
 ## Task
-Write a personalized "How Can I Do Better?" analysis for ${input.playerName}. Be direct, specific, and actionable. Focus on:
+${options.drunkMode
+        ? `Write a "coaching" analysis for your buddy ${input.playerName}. You're drunk so your advice is a bit all over the place. Include:
+
+1. **The Big Oopsie** - What went wrong (get emotional about it)
+2. **Item... Things** - Comment on their items, maybe suggest a made-up item or two
+3. **What Were You Thinking??** - Speculate wildly about their decision making
+4. **Pro Tip** - Give one piece of advice (can be real or ridiculous)
+
+Keep slurring words occasionally. Be funny but not mean. Keep it under 250 words.`
+        : `Write a personalized "How Can I Do Better?" analysis for ${input.playerName}. Be direct, specific, and actionable. Focus on:
 
 1. **Biggest Issue** - The #1 thing that hurt their performance (be specific)
 2. **Item Choices** - Were their MAIN ITEMS optimal against this enemy lineup? Suggest alternatives. (Note: Neutral items are random drops, don't suggest replacing them with purchasable items)
 3. **Game Sense** - Based on their stats, what playstyle mistakes might they have made?
 4. **Quick Win** - One specific, easy thing they can do next game to immediately improve
 
-Keep the tone friendly but honest. Use Dota terminology. Keep it under 250 words. Format with bold headers and bullet points.`;
+Keep the tone friendly but honest. Use Dota terminology. Keep it under 250 words. Format with bold headers and bullet points.`}`;
 
     const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
         method: "POST",

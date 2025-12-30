@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, ChevronDown, Loader2, AlertCircle } from "lucide-react";
+import { Sparkles, ChevronDown, Loader2, AlertCircle, Beer } from "lucide-react";
 import { generateCoachingAnalysis } from "@/lib/gemini";
 import { getItemDisplayName } from "@/lib/items";
 import { getHeroName, type Role } from "@/lib/opendota";
@@ -48,6 +48,8 @@ export default function CoachAnalysis({
 }: CoachAnalysisProps) {
     const [selectedPlayer, setSelectedPlayer] = useState<TrackedPlayer | null>(null);
     const [showDropdown, setShowDropdown] = useState(false);
+    const [pendingDrunkMode, setPendingDrunkMode] = useState(false);
+    const [isDrunkMode, setIsDrunkMode] = useState(false);
     const [analysis, setAnalysis] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -57,19 +59,21 @@ export default function CoachAnalysis({
         return null;
     }
 
-    const handleGenerateClick = () => {
+    const handleGenerateClick = (drunkMode: boolean) => {
         if (trackedPlayers.length === 1) {
             // Only one tracked player - generate immediately
-            generateAnalysis(trackedPlayers[0]);
+            generateAnalysis(trackedPlayers[0], drunkMode);
         } else {
             // Multiple tracked players - show dropdown
+            setPendingDrunkMode(drunkMode);
             setShowDropdown(true);
         }
     };
 
-    const generateAnalysis = async (player: TrackedPlayer) => {
+    const generateAnalysis = async (player: TrackedPlayer, drunkMode: boolean) => {
         setSelectedPlayer(player);
         setShowDropdown(false);
+        setIsDrunkMode(drunkMode);
         setLoading(true);
         setError(null);
         setAnalysis(null);
@@ -117,7 +121,7 @@ export default function CoachAnalysis({
                 impGrade: player.impGrade,
                 enemyHeroes: enemies,
                 teammateHeroes: teammates,
-            }, apiKey);
+            }, apiKey, { drunkMode });
 
             setAnalysis(result);
         } catch (err) {
@@ -171,15 +175,26 @@ export default function CoachAnalysis({
                                     </span>
                                 )}
                             </p>
-                            <button
-                                onClick={handleGenerateClick}
-                                className="px-6 py-3 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary 
-                                         text-cyber-bg font-bold hover:opacity-90 transition-opacity
-                                         flex items-center gap-2 mx-auto"
-                            >
-                                <Sparkles className="w-5 h-5" />
-                                How Can I Do Better?
-                            </button>
+                            <div className="flex gap-3 justify-center flex-wrap">
+                                <button
+                                    onClick={() => handleGenerateClick(false)}
+                                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary
+                                             text-cyber-bg font-bold hover:opacity-90 transition-opacity
+                                             flex items-center gap-2"
+                                >
+                                    <Sparkles className="w-5 h-5" />
+                                    How Can I Do Better?
+                                </button>
+                                <button
+                                    onClick={() => handleGenerateClick(true)}
+                                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600
+                                             text-white font-bold hover:opacity-90 transition-opacity
+                                             flex items-center gap-2"
+                                >
+                                    <Beer className="w-5 h-5" />
+                                    Drunken Analysis
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -192,15 +207,19 @@ export default function CoachAnalysis({
                                 exit={{ opacity: 0, y: -10 }}
                                 className="text-center"
                             >
-                                <p className="text-cyber-text-muted mb-4">Select a player to analyze:</p>
+                                <p className="text-cyber-text-muted mb-4">
+                                    Select a player for {pendingDrunkMode ? "drunken" : ""} analysis:
+                                </p>
                                 <div className="flex gap-3 justify-center flex-wrap">
                                     {trackedPlayers.map((player) => (
                                         <button
                                             key={player.playerIndex}
-                                            onClick={() => generateAnalysis(player)}
-                                            className="px-4 py-2 rounded-lg bg-cyber-surface-light hover:bg-brand-primary/20 
-                                                     border border-cyber-border hover:border-brand-primary/50
-                                                     transition-all flex items-center gap-2"
+                                            onClick={() => generateAnalysis(player, pendingDrunkMode)}
+                                            className={`px-4 py-2 rounded-lg bg-cyber-surface-light
+                                                     border border-cyber-border transition-all flex items-center gap-2
+                                                     ${pendingDrunkMode
+                                                         ? "hover:bg-amber-500/20 hover:border-amber-500/50"
+                                                         : "hover:bg-brand-primary/20 hover:border-brand-primary/50"}`}
                                         >
                                             <span className="font-semibold text-cyber-text">
                                                 {player.displayName}
@@ -257,7 +276,7 @@ export default function CoachAnalysis({
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                         >
-                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-cyber-border/50">
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-cyber-border/50 flex-wrap">
                                 <span className="text-lg font-bold text-brand-primary">
                                     {selectedPlayer.displayName}
                                 </span>
@@ -271,6 +290,12 @@ export default function CoachAnalysis({
                                     }`}>
                                     {selectedPlayer.isRadiant === radiantWin ? "Won" : "Lost"}
                                 </span>
+                                {isDrunkMode && (
+                                    <span className="text-sm px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 flex items-center gap-1">
+                                        <Beer className="w-3 h-3" />
+                                        Drunken
+                                    </span>
+                                )}
                             </div>
 
                             <div className="prose prose-invert prose-sm max-w-none 
@@ -282,13 +307,32 @@ export default function CoachAnalysis({
                             </div>
 
                             {/* Regenerate or analyze another */}
-                            <div className="mt-6 pt-4 border-t border-cyber-border/50 flex gap-3 justify-center">
+                            <div className="mt-6 pt-4 border-t border-cyber-border/50 flex gap-3 justify-center flex-wrap">
                                 <button
-                                    onClick={() => generateAnalysis(selectedPlayer)}
-                                    className="px-4 py-2 rounded-lg bg-cyber-surface-light hover:bg-cyber-surface-light/70 
+                                    onClick={() => generateAnalysis(selectedPlayer, isDrunkMode)}
+                                    className="px-4 py-2 rounded-lg bg-cyber-surface-light hover:bg-cyber-surface-light/70
                                              text-cyber-text-muted hover:text-cyber-text transition-colors text-sm"
                                 >
                                     Regenerate
+                                </button>
+                                <button
+                                    onClick={() => generateAnalysis(selectedPlayer, !isDrunkMode)}
+                                    className={`px-4 py-2 rounded-lg text-sm flex items-center gap-1.5
+                                             ${isDrunkMode
+                                                 ? "bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary"
+                                                 : "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400"}`}
+                                >
+                                    {isDrunkMode ? (
+                                        <>
+                                            <Sparkles className="w-4 h-4" />
+                                            Try Sober Analysis
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Beer className="w-4 h-4" />
+                                            Try Drunken Analysis
+                                        </>
+                                    )}
                                 </button>
                                 {trackedPlayers.length > 1 && (
                                     <button
@@ -296,8 +340,9 @@ export default function CoachAnalysis({
                                             setAnalysis(null);
                                             setSelectedPlayer(null);
                                             setShowDropdown(true);
+                                            setPendingDrunkMode(isDrunkMode);
                                         }}
-                                        className="px-4 py-2 rounded-lg bg-brand-primary/10 hover:bg-brand-primary/20 
+                                        className="px-4 py-2 rounded-lg bg-brand-primary/10 hover:bg-brand-primary/20
                                                  text-brand-primary transition-colors text-sm flex items-center gap-1"
                                     >
                                         <ChevronDown className="w-4 h-4" />
