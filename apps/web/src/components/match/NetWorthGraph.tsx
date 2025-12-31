@@ -117,11 +117,13 @@ export default function NetWorthGraph({ players }: NetWorthGraphProps) {
                         margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                     >
                         <defs>
-                            <linearGradient id="splitColor" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#22c55e" stopOpacity={0.5} />
-                                <stop offset="50%" stopColor="#22c55e" stopOpacity={0.1} />
-                                <stop offset="50%" stopColor="#ef4444" stopOpacity={0.1} />
-                                <stop offset="100%" stopColor="#ef4444" stopOpacity={0.5} />
+                            <linearGradient id="greenFill" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#22c55e" stopOpacity={0.6} />
+                                <stop offset="100%" stopColor="#22c55e" stopOpacity={0.1} />
+                            </linearGradient>
+                            <linearGradient id="redFill" x1="0" y1="1" x2="0" y2="0">
+                                <stop offset="0%" stopColor="#ef4444" stopOpacity={0.6} />
+                                <stop offset="100%" stopColor="#ef4444" stopOpacity={0.1} />
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -171,38 +173,33 @@ export default function NetWorthGraph({ players }: NetWorthGraphProps) {
                             }}
                         />
                         <ReferenceLine y={0} stroke="#6b7280" strokeWidth={2} />
-                        <Area
-                            type="monotone"
-                            dataKey="goldDiff"
-                            stroke="none"
-                            fill="url(#splitColor)"
-                            fillOpacity={1}
-                            baseValue={0}
-                            tooltipType="none"
-                        />
-                        {/* Green line for positive values */}
+                        {/* Green fill for positive values (Radiant ahead) */}
                         <Area
                             type="monotone"
                             dataKey="goldDiff"
                             stroke="#22c55e"
                             strokeWidth={2}
-                            fill="none"
+                            fill="url(#greenFill)"
+                            fillOpacity={1}
+                            baseValue={0}
+                            data={data.map(d => ({ ...d, goldDiff: Math.max(0, d.goldDiff) }))}
+                            tooltipType="none"
                             dot={false}
                             activeDot={{ r: 4, fill: "#22c55e" }}
-                            data={data.map(d => ({ ...d, goldDiff: d.goldDiff >= 0 ? d.goldDiff : null }))}
-                            tooltipType="none"
                         />
-                        {/* Red line for negative values - this one shows in tooltip */}
+                        {/* Red fill for negative values (Dire ahead) */}
                         <Area
                             type="monotone"
                             dataKey="goldDiff"
                             stroke="#ef4444"
                             strokeWidth={2}
-                            fill="none"
+                            fill="url(#redFill)"
+                            fillOpacity={1}
+                            baseValue={0}
+                            data={data.map(d => ({ ...d, goldDiff: Math.min(0, d.goldDiff) }))}
+                            tooltipType="none"
                             dot={false}
                             activeDot={{ r: 4, fill: "#ef4444" }}
-                            data={data.map(d => ({ ...d, goldDiff: d.goldDiff < 0 ? d.goldDiff : null }))}
-                            tooltipType="none"
                         />
                     </AreaChart>
                 </ResponsiveContainer>
