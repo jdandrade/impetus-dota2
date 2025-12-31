@@ -92,8 +92,8 @@ class MatchTracker:
                         summary="Score unavailable",
                     )
                 
-                # Generate roast
-                player_name = match.player_name or fallback_name
+                # Generate roast - use group nickname for proper recognition
+                player_name = fallback_name
                 roast = await self.gemini.generate_roast(
                     player_name=player_name,
                     match=match,
@@ -172,8 +172,8 @@ class MatchTracker:
                 summary="Score unavailable",
             )
         
-        # Generate roast
-        player_name = match.player_name or fallback_name
+        # Generate roast - use group nickname for proper recognition
+        player_name = fallback_name
         roast = await self.gemini.generate_roast(
             player_name=player_name,
             match=match,
