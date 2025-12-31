@@ -6,7 +6,7 @@ Main polling loop that detects new matches and triggers announcements.
 import asyncio
 import logging
 
-from app.config import TRACKED_PLAYERS, convert_steam_id64_to_account_id, Settings
+from app.config import TRACKED_PLAYERS, convert_steam_id64_to_account_id, Settings, get_poll_interval
 from app.bot import ProfessorBot
 from app.services.opendota import get_latest_match, request_match_parse, MatchData
 from app.services.imp_engine import calculate_imp, IMPResult
@@ -49,7 +49,9 @@ class MatchTracker:
         # Start polling loop
         while self._running and not self.bot.is_closed():
             await self._poll_matches()
-            await asyncio.sleep(self.settings.poll_interval_seconds)
+            # Use adaptive polling (reduced during off-hours 2am-8am Portugal)
+            poll_interval = get_poll_interval(self.settings)
+            await asyncio.sleep(poll_interval)
     
     def stop(self) -> None:
         """Stop the match tracking loop."""
