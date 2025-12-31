@@ -14,15 +14,21 @@ interface LaneMatchupsProps {
     players: OpenDotaPlayer[];
 }
 
-// Hero icon component
-function HeroIcon({ heroId, size = 32 }: { heroId: number; size?: number }) {
+// Hero icon component with optional highlight for lane winners
+function HeroIcon({ heroId, size = 32, highlight }: { heroId: number; size?: number; highlight?: "radiant" | "dire" | null }) {
+    const borderClass = highlight === "radiant"
+        ? "border-2 border-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]"
+        : highlight === "dire"
+            ? "border-2 border-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)]"
+            : "border border-gray-700";
+
     return (
         <Image
             src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${getHeroInternalName(heroId)}.png`}
             alt={`Hero ${heroId}`}
             width={size}
             height={size}
-            className="rounded-full border border-gray-700"
+            className={`rounded-full ${borderClass}`}
             unoptimized
         />
     );
@@ -57,6 +63,10 @@ function LaneCard({ matchup }: { matchup: LaneMatchup }) {
     const laneInfo = getLaneInfo(matchup.lane);
     const outcomeDisplay = getOutcomeDisplay(matchup.outcome);
 
+    // Determine which side to highlight (null for draw)
+    const radiantHighlight = matchup.outcome === "radiant" ? "radiant" : null;
+    const direHighlight = matchup.outcome === "dire" ? "dire" : null;
+
     return (
         <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 flex flex-col items-center gap-3">
             {/* Hero icons: Radiant vs Dire */}
@@ -64,7 +74,7 @@ function LaneCard({ matchup }: { matchup: LaneMatchup }) {
                 {/* Radiant heroes */}
                 <div className="flex gap-1">
                     {matchup.radiantHeroes.map((heroId, i) => (
-                        <HeroIcon key={`r-${i}`} heroId={heroId} size={36} />
+                        <HeroIcon key={`r-${i}`} heroId={heroId} size={36} highlight={radiantHighlight} />
                     ))}
                 </div>
 
@@ -74,7 +84,7 @@ function LaneCard({ matchup }: { matchup: LaneMatchup }) {
                 {/* Dire heroes */}
                 <div className="flex gap-1">
                     {matchup.direHeroes.map((heroId, i) => (
-                        <HeroIcon key={`d-${i}`} heroId={heroId} size={36} />
+                        <HeroIcon key={`d-${i}`} heroId={heroId} size={36} highlight={direHighlight} />
                     ))}
                 </div>
             </div>
