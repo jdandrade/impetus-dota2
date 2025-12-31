@@ -23,7 +23,7 @@ import {
 import { useMatchHistory } from "@/hooks/useMatchHistory";
 import {
   getPlayerFullProfile,
-  getPlayerTodayMatchCount,
+  getPlayerTodayStats,
   steam64ToSteam32,
   type PlayerProfile,
 } from "@/lib/opendota";
@@ -79,6 +79,7 @@ interface AddictedPlayerOfDay {
   player: { steam64: string; name: string };
   profile: PlayerProfile | null;
   gamesPlayed: number;
+  totalDuration: number; // seconds
 }
 
 export default function Home() {
@@ -97,12 +98,12 @@ export default function Home() {
       setLoadingAddict(true);
 
       try {
-        // Fetch today's game count for all players in parallel
+        // Fetch today's stats for all players in parallel
         const results = await Promise.all(
           ADDICTED_PLAYERS.map(async (player) => {
             const accountId = steam64ToSteam32(player.steam64);
-            const gamesPlayed = await getPlayerTodayMatchCount(accountId);
-            return { player, gamesPlayed };
+            const stats = await getPlayerTodayStats(accountId);
+            return { player, ...stats };
           })
         );
 
@@ -121,6 +122,7 @@ export default function Home() {
             player: mostAddicted.player,
             profile,
             gamesPlayed: mostAddicted.gamesPlayed,
+            totalDuration: mostAddicted.totalDuration,
           });
         } else {
           setAddictedOfDay(null);
@@ -313,12 +315,19 @@ export default function Home() {
                     {addictedOfDay.player.name}
                   </span>
 
-                  {/* Games count */}
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-400/20 border border-yellow-400/30">
-                    <Gamepad2 className="w-4 h-4 text-yellow-400" />
-                    <span className="text-sm font-semibold text-yellow-400">
-                      {addictedOfDay.gamesPlayed} game{addictedOfDay.gamesPlayed !== 1 ? "s" : ""} today
-                    </span>
+                  {/* Games count and time */}
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-400/20 border border-yellow-400/30">
+                      <Gamepad2 className="w-4 h-4 text-yellow-400" />
+                      <span className="text-sm font-semibold text-yellow-400">
+                        {addictedOfDay.gamesPlayed} game{addictedOfDay.gamesPlayed !== 1 ? "s" : ""} today
+                      </span>
+                    </div>
+                    {addictedOfDay.totalDuration > 0 && (
+                      <span className="text-xs text-cyber-text-muted">
+                        {Math.floor(addictedOfDay.totalDuration / 3600)}h {Math.floor((addictedOfDay.totalDuration % 3600) / 60)}m played
+                      </span>
+                    )}
                   </div>
                 </div>
               </button>

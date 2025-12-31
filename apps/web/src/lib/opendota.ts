@@ -1061,24 +1061,34 @@ function getTodayStartTimestamp(): number {
 }
 
 /**
- * Fetch count of matches a player has played today.
+ * Fetch count of matches and total play time a player has played today.
  * @param accountId - Steam32 account ID
- * @returns Number of matches played today
+ * @returns Object with gamesPlayed count and totalDuration in seconds
  */
-export async function getPlayerTodayMatchCount(accountId: string): Promise<number> {
+export async function getPlayerTodayStats(accountId: string): Promise<{ gamesPlayed: number; totalDuration: number }> {
     try {
         const todayStart = getTodayStartTimestamp();
         const response = await fetch(
             `${OPENDOTA_API_URL}/players/${accountId}/matches?date=1&limit=50`
         );
-        if (!response.ok) return 0;
+        if (!response.ok) return { gamesPlayed: 0, totalDuration: 0 };
 
         const data = await response.json();
         // Filter matches that started today
         const todayMatches = data.filter((m: { start_time: number }) => m.start_time >= todayStart);
-        return todayMatches.length;
+
+        // Sum up all durations (in seconds)
+        const totalDuration = todayMatches.reduce(
+            (sum: number, m: { duration: number }) => sum + (m.duration || 0),
+            0
+        );
+
+        return {
+            gamesPlayed: todayMatches.length,
+            totalDuration,
+        };
     } catch {
-        return 0;
+        return { gamesPlayed: 0, totalDuration: 0 };
     }
 }
 
