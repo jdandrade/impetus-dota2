@@ -46,12 +46,9 @@ class MatchTracker:
         # Initialize tracking state
         await self._initialize_players()
         
-        # Start polling loop
+        # Start polling loop - staggered polling across interval means no extra sleep needed
         while self._running and not self.bot.is_closed():
             await self._poll_matches()
-            # Use adaptive polling (reduced during off-hours 2am-8am Portugal)
-            poll_interval = get_poll_interval(self.settings)
-            await asyncio.sleep(poll_interval)
     
     def stop(self) -> None:
         """Stop the match tracking loop."""
@@ -123,14 +120,32 @@ class MatchTracker:
             await asyncio.sleep(2)
     
     async def _poll_matches(self) -> None:
-        """Poll for new matches across all tracked players."""
-        for steam_id, fallback_name in TRACKED_PLAYERS.items():
+        """
+        Poll for new matches across all tracked players.
+        
+        Players are staggered across the polling interval to avoid burst requests
+        that could trigger OpenDota's rate limiting.
+        """
+        players = list(TRACKED_PLAYERS.items())
+        num_players = len(players)
+        
+        if num_players == 0:
+            return
+        
+        # Calculate delay between players to spread across the polling interval
+        # e.g., 600s interval / 6 players = 100s between each player
+        poll_interval = get_poll_interval(self.settings)
+        delay_between_players = poll_interval / num_players
+        
+        for i, (steam_id, fallback_name) in enumerate(players):
             try:
                 await self._check_player(steam_id, fallback_name)
-                # Rate limit between players
-                await asyncio.sleep(1)
             except Exception as e:
                 logger.exception(f"Error checking {fallback_name}: {e}")
+            
+            # Wait before checking next player (except for last player)
+            if i < num_players - 1:
+                await asyncio.sleep(delay_between_players)
     
     async def _check_player(self, steam_id: str, fallback_name: str) -> None:
         """
