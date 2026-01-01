@@ -144,9 +144,11 @@ export default function PlayerPage() {
             }
 
             // Find matches that haven't been fetched yet (using ref, not state)
-            const matchesToFetch = matches.filter(
-                m => !fetchedMatchesRef.current.has(m.match_id)
-            );
+            // Only auto-fetch the first 10 matches to reduce API calls
+            const AUTO_FETCH_LIMIT = 10;
+            const matchesToFetch = matches
+                .slice(0, AUTO_FETCH_LIMIT)
+                .filter(m => !fetchedMatchesRef.current.has(m.match_id));
             if (matchesToFetch.length === 0) return;
 
             // Mark these as being fetched (prevent duplicate fetches)
@@ -217,6 +219,27 @@ export default function PlayerPage() {
             loadMoreMatches();
         }
     }, [loadMoreMatches, hasMore, loadingMore]);
+
+    // Manually fetch enriched data for a single match (for older matches)
+    const [loadingMatchId, setLoadingMatchId] = useState<number | null>(null);
+
+    const fetchSingleMatchEnriched = useCallback(async (matchId: number) => {
+        if (fetchedMatchesRef.current.has(matchId)) return;
+
+        setLoadingMatchId(matchId);
+        try {
+            const data = await getEnrichedMatchData(matchId, accountId);
+            if (data) {
+                fetchedMatchesRef.current.add(matchId);
+                cacheEnrichedMatch(matchId, accountId, data);
+                setEnrichedData(prev => ({ ...prev, [matchId]: data }));
+            }
+        } catch (err) {
+            console.error(`Failed to fetch enriched data for match ${matchId}:`, err);
+        } finally {
+            setLoadingMatchId(null);
+        }
+    }, [accountId]);
 
     // Calculate overall win/loss stats
     const totalGames = winLoss.win + winLoss.lose;
@@ -491,8 +514,8 @@ export default function PlayerPage() {
                                                     </span>
                                                 </div>
 
-                                                {/* Items */}
-                                                {enriched?.items && (
+                                                {/* Items - or Load button for older matches */}
+                                                {enriched?.items ? (
                                                     <div className="flex gap-0.5 flex-shrink-0 items-center">
                                                         {/* Main 6 items */}
                                                         {enriched.items.slice(0, 6).map((itemId, i) => (
@@ -523,7 +546,25 @@ export default function PlayerPage() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                )}
+                                                ) : index >= 10 ? (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            fetchSingleMatchEnriched(match.match_id);
+                                                        }}
+                                                        disabled={loadingMatchId === match.match_id}
+                                                        className="text-xs px-2 py-1 rounded bg-cyber-surface-light hover:bg-cyber-surface-light/80 text-cyber-text-muted transition-colors flex items-center gap-1"
+                                                    >
+                                                        {loadingMatchId === match.match_id ? (
+                                                            <>
+                                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                                Loading...
+                                                            </>
+                                                        ) : (
+                                                            "Load Items"
+                                                        )}
+                                                    </button>
+                                                ) : null}
 
                                                 {/* KDA & K/D/A */}
                                                 <div className="text-right flex-shrink-0 min-w-[70px]">
