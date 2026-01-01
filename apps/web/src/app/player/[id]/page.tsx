@@ -545,9 +545,9 @@ export default function PlayerPage() {
                                                     {/* K/D/A breakdown */}
                                                     <span className="font-mono text-sm">
                                                         <span className="text-green-400">{match.kills}</span>
-                                                        <span className="text-cyber-text-muted">/</span>
+                                                        <span className="text-cyber-text-muted"> / </span>
                                                         <span className="text-red-400">{match.deaths}</span>
-                                                        <span className="text-cyber-text-muted">/</span>
+                                                        <span className="text-cyber-text-muted"> / </span>
                                                         <span style={{ color: '#fac654' }}>{match.assists}</span>
                                                     </span>
                                                 </div>

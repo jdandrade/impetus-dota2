@@ -515,9 +515,9 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                         <td className="text-center py-2 px-2">
                                             <span className="font-mono text-sm">
                                                 <span className="text-green-400 font-semibold">{player.kills}</span>
-                                                <span className="text-cyber-text-muted">/</span>
+                                                <span className="text-cyber-text-muted"> / </span>
                                                 <span className="text-red-400 font-semibold">{player.deaths}</span>
-                                                <span className="text-cyber-text-muted">/</span>
+                                                <span className="text-cyber-text-muted"> / </span>
                                                 <span style={{ color: '#fac654' }}>{player.assists}</span>
                                             </span>
                                         </td>
