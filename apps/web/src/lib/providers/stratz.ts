@@ -326,7 +326,8 @@ export class StratzProvider implements DotaDataProvider {
         }
     }
 
-    async getPlayerPeers(accountId: string, limit: number = 100): Promise<PeerData[]> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async getPlayerPeers(_accountId: string, _limit: number = 100): Promise<PeerData[]> {
         // Stratz doesn't have a direct peers endpoint like OpenDota
         // We'd need to fetch matches and aggregate teammates
         // For now, return empty array (fallback won't help here)
