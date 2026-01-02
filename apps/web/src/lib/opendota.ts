@@ -1110,3 +1110,32 @@ export async function getPlayerWinLoss(accountId: string): Promise<PlayerWinLoss
     }
 }
 
+/**
+ * Peer (teammate) data from OpenDota.
+ */
+export interface PeerData {
+    account_id: number;
+    personaname: string;
+    avatarfull: string;
+    win: number;
+    games: number;
+    with_games: number;
+}
+
+/**
+ * Fetch player's peers (teammates) from OpenDota.
+ * @param accountId - Player's Steam32 account ID
+ * @param limit - Number of recent matches to analyze (default 100)
+ * @returns Array of peer data sorted by games played descending
+ */
+export async function getPlayerPeers(accountId: string, limit: number = 100): Promise<PeerData[]> {
+    try {
+        const response = await fetch(`${OPENDOTA_API_URL}/players/${accountId}/peers?limit=${limit}`);
+        if (!response.ok) return [];
+
+        const data = await response.json();
+        return data as PeerData[];
+    } catch {
+        return [];
+    }
+}

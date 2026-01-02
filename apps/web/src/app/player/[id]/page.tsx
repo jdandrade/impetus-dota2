@@ -18,6 +18,7 @@ import {
     getPlayerFullProfile,
     getPlayerRecentMatches,
     getPlayerWinLoss,
+    getPlayerPeers,
     getHeroImageUrl,
     getHeroName,
     getRankImageUrl,
@@ -30,6 +31,7 @@ import {
     type PlayerRecentMatch,
     type PlayerWinLoss,
     type EnrichedMatch,
+    type PeerData,
 } from "@/lib/opendota";
 import { getItemImageUrl } from "@/lib/items";
 import { getCachedMatchesForPlayer, cacheEnrichedMatch } from "@/lib/match-cache";
@@ -82,6 +84,10 @@ export default function PlayerPage() {
     const [enrichedData, setEnrichedData] = useState<Record<number, Partial<EnrichedMatch>>>({});
     const fetchedMatchesRef = useRef<Set<number>>(new Set());
 
+    // Teammate data (best and troll)
+    const [bestTeammate, setBestTeammate] = useState<PeerData | null>(null);
+    const [trollTeammate, setTrollTeammate] = useState<PeerData | null>(null);
+
     const MATCHES_PER_PAGE = 20;
 
     useEffect(() => {
@@ -90,10 +96,11 @@ export default function PlayerPage() {
             setError(null);
 
             try {
-                const [profileData, matchesData, winLossData] = await Promise.all([
+                const [profileData, matchesData, winLossData, peersData] = await Promise.all([
                     getPlayerFullProfile(accountId),
                     getPlayerRecentMatches(accountId, MATCHES_PER_PAGE),
                     getPlayerWinLoss(accountId),
+                    getPlayerPeers(accountId, 100),
                 ]);
 
                 if (!profileData) {
@@ -106,6 +113,27 @@ export default function PlayerPage() {
                 setMatches(matchesData);
                 setWinLoss(winLossData);
                 setHasMore(matchesData.length === MATCHES_PER_PAGE);
+
+                // Calculate best and troll teammates (minimum 5 games)
+                const MIN_GAMES = 5;
+                const eligiblePeers = peersData.filter(p => p.games >= MIN_GAMES);
+
+                if (eligiblePeers.length > 0) {
+                    // Best teammate has highest win rate
+                    const best = eligiblePeers.reduce((a, b) =>
+                        (a.win / a.games) > (b.win / b.games) ? a : b
+                    );
+                    setBestTeammate(best);
+
+                    // Troll teammate has lowest win rate
+                    const troll = eligiblePeers.reduce((a, b) =>
+                        (a.win / a.games) < (b.win / b.games) ? a : b
+                    );
+                    // Only set troll if different from best
+                    if (troll.account_id !== best.account_id) {
+                        setTrollTeammate(troll);
+                    }
+                }
             } catch (err) {
                 setError(err instanceof Error ? err.message : "Failed to load player data");
             } finally {
@@ -414,6 +442,103 @@ export default function PlayerPage() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Best & Troll Teammates */}
+                        {(bestTeammate || trollTeammate) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Best Teammate */}
+                                {bestTeammate && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.3 }}
+                                        className="glass rounded-2xl p-4"
+                                    >
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-lg">🏆</span>
+                                            <h3 className="font-semibold text-green-400">Best Teammate</h3>
+                                        </div>
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-cyber-surface-light flex-shrink-0">
+                                                {bestTeammate.avatarfull ? (
+                                                    <Image
+                                                        src={bestTeammate.avatarfull}
+                                                        alt={bestTeammate.personaname}
+                                                        fill
+                                                        className="object-cover"
+                                                        unoptimized
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center">
+                                                        <User className="w-6 h-6 text-cyber-text-muted" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="font-medium text-cyber-text truncate max-w-[150px]">
+                                                    {bestTeammate.personaname || "Unknown"}
+                                                </div>
+                                                <div className="text-sm">
+                                                    <span className="text-green-400 font-semibold">
+                                                        {((bestTeammate.win / bestTeammate.games) * 100).toFixed(1)}% WR
+                                                    </span>
+                                                    <span className="text-cyber-text-muted"> • {bestTeammate.games} games</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-cyber-text-muted italic">
+                                            &quot;Make love with this guy - you and him will reach top rank together ❤️&quot;
+                                        </p>
+                                    </motion.div>
+                                )}
+
+                                {/* Troll Teammate */}
+                                {trollTeammate && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.4 }}
+                                        className="glass rounded-2xl p-4"
+                                    >
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-lg">🎭</span>
+                                            <h3 className="font-semibold text-red-400">Troll Teammate</h3>
+                                        </div>
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-cyber-surface-light flex-shrink-0">
+                                                {trollTeammate.avatarfull ? (
+                                                    <Image
+                                                        src={trollTeammate.avatarfull}
+                                                        alt={trollTeammate.personaname}
+                                                        fill
+                                                        className="object-cover"
+                                                        unoptimized
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center">
+                                                        <User className="w-6 h-6 text-cyber-text-muted" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="font-medium text-cyber-text truncate max-w-[150px]">
+                                                    {trollTeammate.personaname || "Unknown"}
+                                                </div>
+                                                <div className="text-sm">
+                                                    <span className="text-red-400 font-semibold">
+                                                        {((trollTeammate.win / trollTeammate.games) * 100).toFixed(1)}% WR
+                                                    </span>
+                                                    <span className="text-cyber-text-muted"> • {trollTeammate.games} games</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-cyber-text-muted italic">
+                                            &quot;Avoid this player... always inting on purpose because he doesn&apos;t want you to go up in ranking&quot;
+                                        </p>
+                                    </motion.div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Match History */}
                         <div className="glass rounded-2xl overflow-hidden">
