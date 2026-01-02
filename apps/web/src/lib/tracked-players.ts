@@ -11,6 +11,7 @@ export const TRACKED_PLAYERS: Record<string, string> = {
     "76561197986252478": "gil",
     "76561197994301802": "mauzaum",
     "76561198014373442": "hory",
+    "76561199837733852": "mister miagy",
 };
 
 // Steam 32 Account IDs (computed from Steam64)
@@ -22,6 +23,7 @@ export const TRACKED_ACCOUNT_IDS: Record<number, string> = {
     25986750: "gil",      // 76561197986252478 - 76561197960265728
     34036074: "mauzaum",  // 76561197994301802 - 76561197960265728
     54107714: "hory",     // 76561198014373442 - 76561197960265728
+    1877468124: "mister miagy", // 76561199837733852 - 76561197960265728
 };
 
 /**
