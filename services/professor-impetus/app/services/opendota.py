@@ -429,3 +429,99 @@ async def _get_cached_player_name(
     
     return fallback_name
 
+
+# =============================================================================
+# STRATZ FALLBACK
+# =============================================================================
+
+# Global Stratz provider (initialized lazily)
+_stratz_provider = None
+
+
+def _get_stratz_provider():
+    """Get the Stratz provider, initializing if needed."""
+    global _stratz_provider
+    if _stratz_provider is None:
+        import os
+        token = os.environ.get("STRATZ_API_TOKEN", "")
+        if token:
+            from .providers.stratz import get_stratz_provider
+            _stratz_provider = get_stratz_provider(token)
+    return _stratz_provider
+
+
+async def get_latest_match_with_fallback(
+    account_id: int, 
+    fallback_name: str = "Unknown"
+) -> Optional[MatchData]:
+    """
+    Fetch the latest match with automatic fallback to Stratz on rate limit.
+    
+    Strategy:
+    1. Try OpenDota first (primary)
+    2. If rate limited (429), fall back to Stratz
+    3. Convert Stratz response to MatchData format
+    
+    Args:
+        account_id: Dota 2 account ID
+        fallback_name: Name to use if API fails
+    
+    Returns:
+        MatchData if found, None otherwise
+    """
+    # First try OpenDota
+    result = await get_latest_match(account_id, fallback_name)
+    
+    # If we got a result, return it
+    if result is not None:
+        return result
+    
+    # Check if we're rate limited (in backoff mode)
+    if not _rate_limiter.is_backing_off():
+        # Not rate limited, just no match found
+        return None
+    
+    # We're rate limited - try Stratz fallback
+    stratz = _get_stratz_provider()
+    if stratz is None:
+        logger.warning("[Fallback] Stratz not configured, cannot fallback")
+        return None
+    
+    logger.info(f"[Fallback] OpenDota rate limited, trying Stratz for account {account_id}")
+    
+    try:
+        stratz_match = await stratz.get_latest_match(account_id, fallback_name)
+        
+        if stratz_match is None:
+            logger.warning(f"[Fallback] Stratz also returned no match for {account_id}")
+            return None
+        
+        # Convert StratzMatchData to MatchData
+        # They have the same structure, but we need to use the correct class
+        return MatchData(
+            match_id=stratz_match.match_id,
+            hero_id=stratz_match.hero_id,
+            hero_name=stratz_match.hero_name,
+            kills=stratz_match.kills,
+            deaths=stratz_match.deaths,
+            assists=stratz_match.assists,
+            gpm=stratz_match.gpm,
+            xpm=stratz_match.xpm,
+            net_worth=stratz_match.net_worth,
+            level=stratz_match.level,
+            hero_damage=stratz_match.hero_damage,
+            tower_damage=stratz_match.tower_damage,
+            hero_healing=stratz_match.hero_healing,
+            last_hits=stratz_match.last_hits,
+            denies=stratz_match.denies,
+            duration_seconds=stratz_match.duration_seconds,
+            is_radiant=stratz_match.is_radiant,
+            radiant_win=stratz_match.radiant_win,
+            player_slot=stratz_match.player_slot,
+            player_name=stratz_match.player_name,
+            lane=stratz_match.lane,
+            all_players=stratz_match.all_players,
+        )
+    except Exception as e:
+        logger.exception(f"[Fallback] Stratz fallback failed: {e}")
+        return None

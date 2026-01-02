@@ -8,7 +8,7 @@ import logging
 
 from app.config import TRACKED_PLAYERS, convert_steam_id64_to_account_id, Settings, get_poll_interval
 from app.bot import ProfessorBot
-from app.services.opendota import get_latest_match, request_match_parse, MatchData
+from app.services.opendota import get_latest_match_with_fallback, request_match_parse, MatchData
 from app.services.imp_engine import calculate_imp, IMPResult
 from app.services.gemini import GeminiClient
 from app.services.redis_store import RedisStore
@@ -71,7 +71,7 @@ class MatchTracker:
                 continue
             
             # First run - fetch and ANNOUNCE current match
-            match = await get_latest_match(account_id, fallback_name)
+            match = await get_latest_match_with_fallback(account_id, fallback_name)
             if match:
                 logger.info(f"🆕 First run: Announcing current match for {fallback_name} ({match.match_id})")
                 
@@ -158,7 +158,7 @@ class MatchTracker:
         account_id = convert_steam_id64_to_account_id(steam_id)
         
         # Fetch latest match from OpenDota
-        match = await get_latest_match(account_id, fallback_name)
+        match = await get_latest_match_with_fallback(account_id, fallback_name)
         if not match:
             return
         

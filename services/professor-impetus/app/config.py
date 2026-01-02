@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # Off hours (2am-8am Portugal): 30 min = 1800s
     off_hours_poll_interval: int = Field(default=1800, env="OFF_HOURS_POLL_INTERVAL")
     
+    # Stratz API (fallback when OpenDota is rate limited)
+    stratz_api_token: str = Field(default="", env="STRATZ_API_TOKEN")
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
