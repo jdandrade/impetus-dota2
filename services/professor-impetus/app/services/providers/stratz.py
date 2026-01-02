@@ -187,7 +187,9 @@ class StratzProvider:
         is_radiant = player_data.get("isRadiant", True)
         
         # Calculate player_slot from position and team
-        position = player_data.get("position", 0)
+        # Note: Stratz position can be a string enum, convert to int
+        position_raw = player_data.get("position", 0)
+        position = int(position_raw) if position_raw is not None else 0
         player_slot = position if is_radiant else 128 + position
         
         player_name = player.get("steamAccount", {}).get("name", fallback_name)
