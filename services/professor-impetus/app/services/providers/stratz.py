@@ -188,8 +188,20 @@ class StratzProvider:
         
         # Calculate player_slot from position and team
         # Note: Stratz position can be a string enum, convert to int
-        position_raw = player_data.get("position", 0)
-        position = int(position_raw) if position_raw is not None else 0
+        position_raw = player_data.get("position")
+        position = 0
+
+        if isinstance(position_raw, int):
+            position = position_raw
+        elif isinstance(position_raw, str):
+            if position_raw.startswith("POSITION_"):
+                try:
+                    position = int(position_raw.split("_")[1])
+                except (ValueError, IndexError):
+                    pass
+            elif position_raw.isdigit():
+                position = int(position_raw)
+
         player_slot = position if is_radiant else 128 + position
         
         player_name = player.get("steamAccount", {}).get("name", fallback_name)
@@ -215,7 +227,8 @@ class StratzProvider:
             radiant_win=match.get("didRadiantWin", False),
             player_slot=player_slot,
             player_name=player_name,
-            lane=player_data.get("lane"),
+            # Ensure lane is int or None (safeguard against string enums)
+            lane=player_data.get("lane") if isinstance(player_data.get("lane"), int) else None,
             all_players=None,  # Not fetching all players for now
         )
 
