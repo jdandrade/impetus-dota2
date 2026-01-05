@@ -630,7 +630,7 @@ export default function PlayerPage() {
                                                         )}
                                                         {enriched?.net_worth_rank === 1 && (
                                                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 font-medium">
-                                                                Rich
+                                                                Filthy Rich
                                                             </span>
                                                         )}
                                                     </div>
