@@ -183,10 +183,6 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
-            <Zap className="w-4 h-4 text-brand-primary" />
-            <span className="text-sm text-cyber-text-muted">v0.6.0 Penta-Role</span>
-          </div>
 
           <h1 className="text-5xl md:text-7xl font-bold mb-4">
             <span className="text-gradient">Impetus</span>
