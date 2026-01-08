@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
-  Zap,
   TrendingUp,
   Loader2,
   Search,
