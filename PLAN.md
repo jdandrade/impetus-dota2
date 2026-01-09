@@ -331,15 +331,6 @@ A step-by-step guide to get the "Hello World" integration running.
 
 ---
 
-## 5. Next Steps After Walking Skeleton
-
-1. **OpenDota Integration** - Fetch real match data
-2. **Scoring Algorithm V1** - Implement statistical normalization with Scipy
-3. **Match Detail Page** - Visualize score breakdown with charts
-4. **Player Profile Page** - Trend analysis over multiple matches
-5. **Deployment** - Vercel (web) + Railway/Fly.io (engine)
-
----
 
 *Document Version: 1.1*  
 *Last Updated: 2024-12-27*
