@@ -333,4 +333,4 @@ A step-by-step guide to get the "Hello World" integration running.
 
 
 *Document Version: 1.1*  
-*Last Updated: 2024-12-27*
+*Last Updated: 2024-12-28*
