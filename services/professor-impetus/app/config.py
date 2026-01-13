@@ -42,6 +42,18 @@ class Settings(BaseSettings):
     # Stratz API (fallback when OpenDota is rate limited)
     stratz_api_token: str = Field(default="", env="STRATZ_API_TOKEN")
     
+    # YouTube API
+    youtube_api_key: str = Field(default="", env="YOUTUBE_API_KEY")
+    youtube_post_hour_gmt: int = Field(default=21, env="YOUTUBE_POST_HOUR_GMT")
+    youtube_max_videos: int = Field(default=3, env="YOUTUBE_MAX_VIDEOS")
+    
+    # Email notifications (SMTP)
+    smtp_server: str = Field(default="", env="SMTP_SERVER")
+    smtp_port: int = Field(default=587, env="SMTP_PORT")
+    smtp_user: str = Field(default="", env="SMTP_USER")
+    smtp_password: str = Field(default="", env="SMTP_PASSWORD")
+    smtp_from_email: str = Field(default="", env="SMTP_FROM_EMAIL")
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

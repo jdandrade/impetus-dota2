@@ -190,3 +190,87 @@ class ProfessorBot(discord.Client):
         except Exception as e:
             logger.exception(f"Error sending match announcement: {e}")
             return False
+    
+    async def send_video_header(self) -> bool:
+        """
+        Send the daily video header message.
+        
+        Returns:
+            True if sent successfully
+        """
+        if not self._channel:
+            self._channel = self.get_channel(self.channel_id)
+        
+        if not self._channel:
+            logger.error(f"Channel {self.channel_id} not found")
+            return False
+        
+        try:
+            await self._channel.send(
+                "📚 **Daily Dota 2 Learning Content**\n"
+                "Here are today's top educational videos!"
+            )
+            return True
+        except Exception as e:
+            logger.exception(f"Error sending video header: {e}")
+            return False
+    
+    async def send_video_recommendation(
+        self,
+        video,  # YouTubeVideo type (avoid import cycle)
+        rank: int,
+    ) -> bool:
+        """
+        Send a video recommendation embed to the channel.
+        
+        Args:
+            video: YouTubeVideo object
+            rank: Video ranking (1, 2, or 3)
+            
+        Returns:
+            True if sent successfully
+        """
+        if not self._channel:
+            self._channel = self.get_channel(self.channel_id)
+        
+        if not self._channel:
+            logger.error(f"Channel {self.channel_id} not found")
+            return False
+        
+        try:
+            # Medal emoji based on rank
+            rank_emojis = {1: "🥇", 2: "🥈", 3: "🥉"}
+            rank_emoji = rank_emojis.get(rank, "🎬")
+            
+            embed = discord.Embed(
+                title=f"{rank_emoji} {video.title}",
+                url=video.url,
+                color=discord.Color.red(),
+            )
+            
+            # Set thumbnail
+            if video.thumbnail_url:
+                embed.set_image(url=video.thumbnail_url)
+            
+            # Add fields
+            embed.add_field(
+                name="Channel",
+                value=video.channel_name,
+                inline=True,
+            )
+            embed.add_field(
+                name="Views",
+                value=f"{video.view_count:,}",
+                inline=True,
+            )
+            
+            embed.set_footer(text="Professor Impetus - Daily Learning")
+            
+            await self._channel.send(embed=embed)
+            logger.info(f"Sent video recommendation: {video.title}")
+            return True
+            
+        except Exception as e:
+            logger.exception(f"Error sending video recommendation: {e}")
+            return False
+

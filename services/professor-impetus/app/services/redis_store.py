@@ -1,6 +1,6 @@
 """
 Redis State Store.
-Tracks processed matches to prevent duplicates.
+Tracks processed matches and posted videos to prevent duplicates.
 """
 
 import logging
@@ -10,9 +10,14 @@ import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
 
+# Key for stored posted videos set
+POSTED_VIDEOS_KEY = "youtube:posted_videos"
+# TTL for posted videos (30 days)
+VIDEO_TTL_SECONDS = 60 * 60 * 24 * 30
+
 
 class RedisStore:
-    """Redis-backed state store for match tracking."""
+    """Redis-backed state store for match and video tracking."""
     
     def __init__(self, redis_url: str):
         """Initialize with Redis connection URL."""
@@ -95,3 +100,71 @@ class RedisStore:
             exists = await self.get_last_match_id(steam_id)
             if exists is None:
                 logger.info(f"Initialized tracking for player {steam_id}")
+    
+    # YouTube video deduplication methods
+    
+    async def has_video_been_posted(self, video_id: str) -> bool:
+        """
+        Check if a YouTube video has already been posted.
+        
+        Args:
+            video_id: YouTube video ID
+            
+        Returns:
+            True if video was already posted
+        """
+        if not self._client:
+            return False
+        
+        try:
+            return await self._client.sismember(POSTED_VIDEOS_KEY, video_id)
+        except Exception as e:
+            logger.error(f"Error checking if video {video_id} was posted: {e}")
+            return False
+    
+    async def mark_video_as_posted(self, video_id: str) -> bool:
+        """
+        Mark a YouTube video as posted.
+        
+        Args:
+            video_id: YouTube video ID
+            
+        Returns:
+            True if successful
+        """
+        if not self._client:
+            return False
+        
+        try:
+            await self._client.sadd(POSTED_VIDEOS_KEY, video_id)
+            # Refresh TTL on the set
+            await self._client.expire(POSTED_VIDEOS_KEY, VIDEO_TTL_SECONDS)
+            logger.debug(f"Marked video {video_id} as posted")
+            return True
+        except Exception as e:
+            logger.error(f"Error marking video {video_id} as posted: {e}")
+            return False
+    
+    async def filter_unposted_videos(self, video_ids: list[str]) -> list[str]:
+        """
+        Filter out videos that have already been posted.
+        
+        Args:
+            video_ids: List of YouTube video IDs
+            
+        Returns:
+            List of video IDs that haven't been posted
+        """
+        if not self._client or not video_ids:
+            return video_ids
+        
+        try:
+            unposted = []
+            for video_id in video_ids:
+                if not await self.has_video_been_posted(video_id):
+                    unposted.append(video_id)
+            return unposted
+        except Exception as e:
+            logger.error(f"Error filtering unposted videos: {e}")
+            return video_ids
+

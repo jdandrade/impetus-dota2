@@ -12,8 +12,11 @@ import sys
 from app.config import get_settings, TRACKED_PLAYERS
 from app.bot import ProfessorBot
 from app.tracker import MatchTracker
+from app.youtube_tracker import YouTubeTracker
 from app.services.redis_store import RedisStore
 from app.services.gemini import GeminiClient
+from app.services.youtube import YouTubeClient
+from app.services.email_notifier import create_email_notifier
 
 # Configure logging
 logging.basicConfig(
@@ -63,31 +66,71 @@ async def main():
     )
     
     # Initialize match tracker
-    tracker = MatchTracker(
+    match_tracker = MatchTracker(
         bot=bot,
         redis_store=redis_store,
         gemini_client=gemini_client,
         settings=settings,
     )
     
-    # Start tracker as background task
-    async def run_tracker():
+    # Initialize YouTube tracker (if API key is configured)
+    youtube_tracker = None
+    if settings.youtube_api_key:
         try:
-            await tracker.start()
+            youtube_client = YouTubeClient(settings.youtube_api_key)
+            email_notifier = create_email_notifier(
+                smtp_server=settings.smtp_server,
+                smtp_port=settings.smtp_port,
+                smtp_user=settings.smtp_user,
+                smtp_password=settings.smtp_password,
+                from_email=settings.smtp_from_email,
+            )
+            youtube_tracker = YouTubeTracker(
+                bot=bot,
+                youtube_client=youtube_client,
+                gemini_client=gemini_client,
+                redis_store=redis_store,
+                email_notifier=email_notifier,
+                settings=settings,
+            )
+            logger.info(f"YouTube tracker initialized (posting at {settings.youtube_post_hour_gmt}:00 GMT)")
+        except Exception as e:
+            logger.warning(f"Failed to initialize YouTube tracker: {e}")
+    else:
+        logger.info("YouTube API key not configured, skipping YouTube tracker")
+    
+    # Start trackers as background tasks
+    async def run_match_tracker():
+        try:
+            await match_tracker.start()
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logger.exception(f"Tracker error: {e}")
+            logger.exception(f"Match tracker error: {e}")
     
-    # Start bot with tracker
+    async def run_youtube_tracker():
+        if not youtube_tracker:
+            return
+        try:
+            await youtube_tracker.start()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.exception(f"YouTube tracker error: {e}")
+    
+    # Start bot with trackers
     async with bot:
-        bot.loop.create_task(run_tracker())
+        bot.loop.create_task(run_match_tracker())
+        if youtube_tracker:
+            bot.loop.create_task(run_youtube_tracker())
         try:
             await bot.start(settings.discord_token)
         except KeyboardInterrupt:
             logger.info("Shutting down...")
         finally:
-            tracker.stop()
+            match_tracker.stop()
+            if youtube_tracker:
+                youtube_tracker.stop()
             await redis_store.disconnect()
 
 
@@ -96,3 +139,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
+
