@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 import aiohttp
 
@@ -525,3 +525,246 @@ async def get_latest_match_with_fallback(
     except Exception as e:
         logger.exception(f"[Fallback] Stratz fallback failed: {e}")
         return None
+
+
+# =============================================================================
+# YESTERDAY STATS (for Nerd of the Day feature)
+# =============================================================================
+
+@dataclass
+class GameStats:
+    """Stats for a single game."""
+    match_id: int
+    hero_id: int
+    hero_name: str
+    kills: int
+    deaths: int
+    assists: int
+    is_win: bool
+    duration_seconds: int
+    role: str  # carry, mid, offlane, support, hard_support
+
+
+@dataclass
+class YesterdayStats:
+    """Aggregated stats for a player's games from yesterday."""
+    games_played: int
+    total_duration_seconds: int
+    wins: int
+    losses: int
+    
+    # Per-role breakdown: role -> (games, wins)
+    role_stats: Dict[str, tuple]
+    
+    # Per-hero breakdown: hero_name -> (games, wins)
+    hero_stats: Dict[str, tuple]
+    
+    # All games played yesterday (for outlier detection)
+    games: List[GameStats]
+    
+    @property
+    def win_rate(self) -> float:
+        """Win rate as percentage (0-100)."""
+        if self.games_played == 0:
+            return 0.0
+        return (self.wins / self.games_played) * 100
+    
+    @property
+    def total_hours(self) -> float:
+        """Total time played in hours."""
+        return self.total_duration_seconds / 3600
+    
+    def get_best_game(self) -> Optional[GameStats]:
+        """Get best performing game (highest KDA)."""
+        if not self.games:
+            return None
+        return max(self.games, key=lambda g: (g.kills + g.assists) / max(g.deaths, 1))
+    
+    def get_worst_game(self) -> Optional[GameStats]:
+        """Get worst performing game (lowest KDA)."""
+        if not self.games:
+            return None
+        return min(self.games, key=lambda g: (g.kills + g.assists) / max(g.deaths, 1))
+    
+    def get_most_played_role(self) -> Optional[tuple]:
+        """Return (role, games, wins) for most played role."""
+        if not self.role_stats:
+            return None
+        role = max(self.role_stats, key=lambda r: self.role_stats[r][0])
+        games, wins = self.role_stats[role]
+        return (role, games, wins)
+    
+    def get_best_win_rate_role(self, min_games: int = 2) -> Optional[tuple]:
+        """Return (role, games, wins) for role with best win rate (min 2 games)."""
+        valid_roles = {r: s for r, s in self.role_stats.items() if s[0] >= min_games}
+        if not valid_roles:
+            return None
+        role = max(valid_roles, key=lambda r: valid_roles[r][1] / valid_roles[r][0])
+        games, wins = valid_roles[role]
+        return (role, games, wins)
+    
+    def get_most_spammed_hero(self) -> Optional[tuple]:
+        """Return (hero_name, games, wins) for most played hero."""
+        if not self.hero_stats:
+            return None
+        hero = max(self.hero_stats, key=lambda h: self.hero_stats[h][0])
+        games, wins = self.hero_stats[hero]
+        return (hero, games, wins)
+
+
+async def get_player_yesterday_stats(
+    account_id: int,
+    fallback_name: str = "Unknown"
+) -> Optional[YesterdayStats]:
+    """
+    Fetch all matches from yesterday for a player and aggregate stats.
+    
+    Args:
+        account_id: Dota 2 account ID
+        fallback_name: Name to use if API fails
+    
+    Returns:
+        YesterdayStats with aggregated data, None if API fails
+    """
+    import pytz
+    from datetime import datetime, timedelta
+    
+    # Get yesterday's date range in Portuguese time
+    portugal_tz = pytz.timezone("Europe/Lisbon")
+    now_portugal = datetime.now(portugal_tz)
+    yesterday_start = (now_portugal - timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    yesterday_end = yesterday_start + timedelta(days=1)
+    
+    # Convert to Unix timestamps
+    yesterday_start_ts = int(yesterday_start.timestamp())
+    yesterday_end_ts = int(yesterday_end.timestamp())
+    
+    # Check rate limiter
+    if _rate_limiter.is_backing_off():
+        wait_time = _rate_limiter.get_wait_time()
+        logger.debug(f"Rate limited, waiting {wait_time:.1f}s before yesterday stats request")
+        await asyncio.sleep(wait_time)
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            # Fetch recent matches (last 50 should cover a day easily)
+            matches_url = f"{OPENDOTA_API_BASE}/players/{account_id}/matches?limit=50"
+            async with session.get(matches_url) as resp:
+                if resp.status == 429:
+                    _rate_limiter.record_rate_limit()
+                    logger.warning(f"Rate limited fetching yesterday stats for {account_id}")
+                    return None
+                if resp.status != 200:
+                    logger.error(f"OpenDota API error for yesterday stats: {resp.status}")
+                    return None
+                
+                _rate_limiter.record_success()
+                all_matches = await resp.json()
+            
+            # Filter to yesterday's matches
+            yesterday_matches = [
+                m for m in all_matches
+                if yesterday_start_ts <= m.get("start_time", 0) < yesterday_end_ts
+            ]
+            
+            if not yesterday_matches:
+                logger.info(f"No matches found yesterday for account {account_id}")
+                return YesterdayStats(
+                    games_played=0,
+                    total_duration_seconds=0,
+                    wins=0,
+                    losses=0,
+                    role_stats={},
+                    hero_stats={},
+                    games=[],
+                )
+            
+            logger.info(f"Found {len(yesterday_matches)} matches yesterday for account {account_id}")
+            
+            # Process each match
+            games: List[GameStats] = []
+            total_duration = 0
+            wins = 0
+            losses = 0
+            role_stats: Dict[str, List[int]] = {}  # role -> [games, wins]
+            hero_stats: Dict[str, List[int]] = {}  # hero_name -> [games, wins]
+            
+            for match in yesterday_matches:
+                match_id = match.get("match_id")
+                hero_id = match.get("hero_id", 0)
+                hero_name = HERO_NAMES.get(hero_id, f"Hero #{hero_id}")
+                kills = match.get("kills", 0)
+                deaths = match.get("deaths", 0)
+                assists = match.get("assists", 0)
+                duration = match.get("duration", 0)
+                player_slot = match.get("player_slot", 0)
+                radiant_win = match.get("radiant_win", False)
+                
+                is_radiant = player_slot < 128
+                is_win = (is_radiant and radiant_win) or (not is_radiant and not radiant_win)
+                
+                # Determine role from lane (simplified version)
+                lane = match.get("lane")
+                if lane == 2:
+                    role = "mid"
+                elif lane == 1:
+                    role = "carry" if is_radiant else "offlane"
+                elif lane == 3:
+                    role = "offlane" if is_radiant else "carry"
+                else:
+                    role = "support"  # Default for jungle/roaming
+                
+                game = GameStats(
+                    match_id=match_id,
+                    hero_id=hero_id,
+                    hero_name=hero_name,
+                    kills=kills,
+                    deaths=deaths,
+                    assists=assists,
+                    is_win=is_win,
+                    duration_seconds=duration,
+                    role=role,
+                )
+                games.append(game)
+                
+                # Aggregate stats
+                total_duration += duration
+                if is_win:
+                    wins += 1
+                else:
+                    losses += 1
+                
+                # Role stats
+                if role not in role_stats:
+                    role_stats[role] = [0, 0]
+                role_stats[role][0] += 1
+                if is_win:
+                    role_stats[role][1] += 1
+                
+                # Hero stats
+                if hero_name not in hero_stats:
+                    hero_stats[hero_name] = [0, 0]
+                hero_stats[hero_name][0] += 1
+                if is_win:
+                    hero_stats[hero_name][1] += 1
+            
+            # Convert stats to tuples
+            role_stats_tuples = {r: tuple(s) for r, s in role_stats.items()}
+            hero_stats_tuples = {h: tuple(s) for h, s in hero_stats.items()}
+            
+            return YesterdayStats(
+                games_played=len(games),
+                total_duration_seconds=total_duration,
+                wins=wins,
+                losses=losses,
+                role_stats=role_stats_tuples,
+                hero_stats=hero_stats_tuples,
+                games=games,
+            )
+            
+        except Exception as e:
+            logger.exception(f"Error fetching yesterday stats for {account_id}: {e}")
+            return None
+

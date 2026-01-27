@@ -13,6 +13,7 @@ from app.config import get_settings, TRACKED_PLAYERS
 from app.bot import ProfessorBot
 from app.tracker import MatchTracker
 from app.youtube_tracker import YouTubeTracker
+from app.nerd_tracker import NerdOfTheDayTracker
 from app.services.redis_store import RedisStore
 from app.services.gemini import GeminiClient
 from app.services.youtube import YouTubeClient
@@ -99,6 +100,21 @@ async def main():
     else:
         logger.info("YouTube API key not configured, skipping YouTube tracker")
     
+    # Initialize Nerd of the Day tracker (if enabled)
+    nerd_tracker = None
+    if settings.nerd_of_day_enabled:
+        try:
+            nerd_tracker = NerdOfTheDayTracker(
+                bot=bot,
+                gemini_client=gemini_client,
+                settings=settings,
+            )
+            logger.info("Nerd of the Day tracker initialized (posting at 00:00 Portuguese time)")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Nerd tracker: {e}")
+    else:
+        logger.info("Nerd of the Day feature disabled")
+    
     # Start trackers as background tasks
     async def run_match_tracker():
         try:
@@ -118,11 +134,23 @@ async def main():
         except Exception as e:
             logger.exception(f"YouTube tracker error: {e}")
     
+    async def run_nerd_tracker():
+        if not nerd_tracker:
+            return
+        try:
+            await nerd_tracker.start()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.exception(f"Nerd tracker error: {e}")
+    
     # Start bot with trackers
     async with bot:
         bot.loop.create_task(run_match_tracker())
         if youtube_tracker:
             bot.loop.create_task(run_youtube_tracker())
+        if nerd_tracker:
+            bot.loop.create_task(run_nerd_tracker())
         try:
             await bot.start(settings.discord_token)
         except KeyboardInterrupt:
@@ -131,6 +159,8 @@ async def main():
             match_tracker.stop()
             if youtube_tracker:
                 youtube_tracker.stop()
+            if nerd_tracker:
+                nerd_tracker.stop()
             await redis_store.disconnect()
 
 

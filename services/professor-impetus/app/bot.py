@@ -273,4 +273,85 @@ class ProfessorBot(discord.Client):
         except Exception as e:
             logger.exception(f"Error sending video recommendation: {e}")
             return False
+    
+    async def send_nerd_of_day(
+        self,
+        player_name: str,
+        steam_id: str,
+        games_played: int,
+        total_hours: float,
+        wins: int,
+        losses: int,
+        roast: str,
+    ) -> bool:
+        """
+        Send the Nerd of the Day announcement to the channel.
+        
+        Args:
+            player_name: Display name of the nerd
+            steam_id: Steam ID for profile link
+            games_played: Total games played yesterday
+            total_hours: Total hours played
+            wins: Number of wins
+            losses: Number of losses
+            roast: Roast message from Gemini
+            
+        Returns:
+            True if sent successfully
+        """
+        if not self._channel:
+            self._channel = self.get_channel(self.channel_id)
+        
+        if not self._channel:
+            logger.error(f"Channel {self.channel_id} not found")
+            return False
+        
+        try:
+            # Build the embed
+            embed = discord.Embed(
+                title=f"👑 Nerd do Dia: {player_name}",
+                color=discord.Color.gold(),
+            )
+            
+            # Stats
+            win_rate = (wins / games_played * 100) if games_played > 0 else 0
+            
+            embed.add_field(
+                name="🎮 Jogos",
+                value=f"**{games_played}**",
+                inline=True,
+            )
+            embed.add_field(
+                name="⏱️ Tempo",
+                value=f"**{total_hours:.1f}h**",
+                inline=True,
+            )
+            embed.add_field(
+                name="📊 W/L",
+                value=f"**{wins}W** / **{losses}L** ({win_rate:.0f}%)",
+                inline=True,
+            )
+            
+            # Roast as description
+            embed.description = f"💬 *{roast}*"
+            
+            # Footer
+            embed.set_footer(text="Professor Impetus - Nerd do Dia")
+            
+            # Add button to view player profile
+            view = ui.View(timeout=None)
+            player_url = f"{self.frontend_url}/player/{steam_id}"
+            view.add_item(ui.Button(
+                label="👤 Ver Perfil",
+                url=player_url,
+                style=discord.ButtonStyle.link,
+            ))
+            
+            await self._channel.send(embed=embed, view=view)
+            logger.info(f"Sent Nerd of the Day: {player_name}")
+            return True
+            
+        except Exception as e:
+            logger.exception(f"Error sending Nerd of the Day: {e}")
+            return False
 

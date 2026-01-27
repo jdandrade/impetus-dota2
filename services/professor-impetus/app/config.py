@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     youtube_post_hour_gmt: int = Field(default=21, env="YOUTUBE_POST_HOUR_GMT")
     youtube_max_videos: int = Field(default=3, env="YOUTUBE_MAX_VIDEOS")
     
+    # Nerd of the Day feature
+    nerd_of_day_enabled: bool = Field(default=True, env="NERD_OF_DAY_ENABLED")
+    
     # Email notifications (SMTP)
     smtp_server: str = Field(default="", env="SMTP_SERVER")
     smtp_port: int = Field(default=587, env="SMTP_PORT")

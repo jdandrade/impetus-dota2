@@ -16,6 +16,10 @@ from app.prompts.video_triage_prompt import (
     SYSTEM_PROMPT as VIDEO_TRIAGE_SYSTEM_PROMPT,
     build_video_triage_prompt,
 )
+from app.prompts.nerd_roast_prompt import (
+    NERD_ROAST_SYSTEM_PROMPT,
+    build_nerd_roast_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,12 @@ class GeminiClient:
         self.triage_model = genai.GenerativeModel(
             model_name=self.MODEL_NAME,
             system_instruction=VIDEO_TRIAGE_SYSTEM_PROMPT,
+        )
+        
+        # Model for nerd of the day roasts
+        self.nerd_model = genai.GenerativeModel(
+            model_name=self.MODEL_NAME,
+            system_instruction=NERD_ROAST_SYSTEM_PROMPT,
         )
         
         # Keep backwards compatibility
@@ -211,4 +221,90 @@ class GeminiClient:
             return f"**{player_name}**, **{imp_score:.1f}** de IMP... Nem bom nem mau, apenas medíocre. 😐"
         else:
             return f"**{player_name}**, IMP **{imp_score:.1f}**?! O professor já ligou para os teus pais. 📞"
+    
+    async def generate_nerd_roast(
+        self,
+        player_name: str,
+        games_played: int,
+        total_hours: float,
+        wins: int,
+        losses: int,
+        win_rate: float,
+        most_played_role: str | None = None,
+        most_played_role_games: int = 0,
+        most_played_role_wins: int = 0,
+        best_winrate_role: str | None = None,
+        best_winrate_role_games: int = 0,
+        best_winrate_role_wins: int = 0,
+        most_spammed_hero: str | None = None,
+        most_spammed_hero_games: int = 0,
+        most_spammed_hero_wins: int = 0,
+        worst_game_hero: str | None = None,
+        worst_game_kda: str | None = None,
+        best_game_hero: str | None = None,
+        best_game_kda: str | None = None,
+    ) -> str:
+        """
+        Generate a roast for the Nerd of the Day.
+        
+        Args:
+            player_name: Display name of the player
+            games_played: Total games played yesterday
+            total_hours: Total hours played
+            wins/losses: Win/loss record
+            win_rate: Win rate percentage
+            Various role and hero stats for roasting material
+        
+        Returns:
+            Nerd roast message string
+        """
+        try:
+            user_prompt = build_nerd_roast_prompt(
+                player_name=player_name,
+                games_played=games_played,
+                total_hours=total_hours,
+                wins=wins,
+                losses=losses,
+                win_rate=win_rate,
+                most_played_role=most_played_role,
+                most_played_role_games=most_played_role_games,
+                most_played_role_wins=most_played_role_wins,
+                best_winrate_role=best_winrate_role,
+                best_winrate_role_games=best_winrate_role_games,
+                best_winrate_role_wins=best_winrate_role_wins,
+                most_spammed_hero=most_spammed_hero,
+                most_spammed_hero_games=most_spammed_hero_games,
+                most_spammed_hero_wins=most_spammed_hero_wins,
+                worst_game_hero=worst_game_hero,
+                worst_game_kda=worst_game_kda,
+                best_game_hero=best_game_hero,
+                best_game_kda=best_game_kda,
+            )
+            
+            logger.info(f"Generating nerd roast for {player_name} ({games_played} games)")
+            
+            response = self.nerd_model.generate_content(
+                user_prompt,
+                generation_config=genai.GenerationConfig(
+                    max_output_tokens=1500,
+                    temperature=0.9,
+                )
+            )
+            
+            roast = response.text.strip()
+            logger.info(f"Generated nerd roast ({len(roast)} chars): {roast}")
+            return roast
+            
+        except Exception as e:
+            logger.exception(f"Error generating nerd roast for {player_name}: {e}")
+            return self._fallback_nerd_roast(player_name, games_played, total_hours)
+    
+    def _fallback_nerd_roast(self, player_name: str, games_played: int, total_hours: float) -> str:
+        """Generate a simple fallback roast if Gemini fails."""
+        if total_hours >= 5:
+            return f"👑 **{player_name}** é o Nerd do Dia com **{games_played} jogos** ({total_hours:.1f}h). Precisas de ajuda profissional."
+        elif total_hours >= 3:
+            return f"👑 **{player_name}** é o Nerd do Dia! **{games_played} jogos** ({total_hours:.1f}h) - parece que alguém não tem vida social."
+        else:
+            return f"👑 **{player_name}** é o Nerd do Dia com **{games_played} jogos**. Parabéns pelo título que ninguém quer."
 
