@@ -29,7 +29,7 @@ class YouTubeTracker:
     # Search parameters
     MAX_SEARCH_RESULTS = 50
     DAYS_BACK = 7
-    MAX_VIDEOS_TO_POST = 3
+    MAX_VIDEOS_TO_POST = 1
     
     def __init__(
         self,

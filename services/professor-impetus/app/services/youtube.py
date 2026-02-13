@@ -121,6 +121,14 @@ class YouTubeClient:
                 snippet = item["snippet"]
                 stats = item.get("statistics", {})
                 
+                # Filter out non-English videos
+                default_audio_lang = snippet.get("defaultAudioLanguage", "")
+                default_lang = snippet.get("defaultLanguage", "")
+                lang = default_audio_lang or default_lang
+                if lang and not lang.startswith("en"):
+                    logger.debug(f"Skipping non-English video: {snippet['title']} (lang={lang})")
+                    continue
+                
                 # Parse published date
                 published_str = snippet["publishedAt"]
                 published_at = datetime.fromisoformat(
@@ -150,7 +158,7 @@ class YouTubeClient:
             # Sort by view count (descending)
             videos.sort(key=lambda v: v.view_count, reverse=True)
             
-            logger.info(f"Fetched details for {len(videos)} videos")
+            logger.info(f"Fetched details for {len(videos)} videos (after language filter)")
             return videos
             
         except HttpError as e:

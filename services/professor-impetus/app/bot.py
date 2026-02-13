@@ -208,7 +208,7 @@ class ProfessorBot(discord.Client):
         try:
             await self._channel.send(
                 "📚 **Daily Dota 2 Learning Content**\n"
-                "Here are today's top educational videos!"
+                "Here's today's top educational video!"
             )
             return True
         except Exception as e:

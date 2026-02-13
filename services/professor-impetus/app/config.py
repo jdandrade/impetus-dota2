@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # YouTube API
     youtube_api_key: str = Field(default="", env="YOUTUBE_API_KEY")
     youtube_post_hour_gmt: int = Field(default=21, env="YOUTUBE_POST_HOUR_GMT")
-    youtube_max_videos: int = Field(default=3, env="YOUTUBE_MAX_VIDEOS")
+    youtube_max_videos: int = Field(default=1, env="YOUTUBE_MAX_VIDEOS")
     
     # Nerd of the Day feature
     nerd_of_day_enabled: bool = Field(default=True, env="NERD_OF_DAY_ENABLED")

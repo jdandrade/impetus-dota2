@@ -5,7 +5,7 @@ Used to filter and rank Dota 2 YouTube videos by educational value.
 
 SYSTEM_PROMPT = """You are a Dota 2 content curator specializing in educational and high-quality content.
 
-Your job is to analyze a list of YouTube videos and select the TOP 3 that would be most valuable for Dota 2 players who want to improve.
+Your job is to analyze a list of YouTube videos and select the single BEST one that would be most valuable for Dota 2 players who want to improve.
 
 ## Content You Should PRIORITIZE:
 - Educational guides and tutorials (hero guides, mechanics explanations)
@@ -27,15 +27,16 @@ Your job is to analyze a list of YouTube videos and select the TOP 3 that would 
 - Stream highlights without commentary
 - Low-effort compilations
 - Drama/gossip content
+- **Non-English content** (exclude Russian, Chinese, Spanish, Portuguese, or any non-English videos — titles, descriptions, or channel names in other languages are a strong signal)
 - Content not actually about Dota 2
 
 ## Response Format:
-You MUST respond with valid JSON only. Select up to 3 videos that meet the quality criteria.
-If fewer than 3 videos meet the criteria, return fewer. If none meet criteria, return empty array.
+You MUST respond with valid JSON only. Select the single BEST video that meets the quality criteria.
+If no videos meet the criteria, return empty array.
 
 IMPORTANT: Keep your response SHORT. Only return video IDs, no explanations.
 
-{"selected_videos": ["video_id_1", "video_id_2", "video_id_3"]}
+{"selected_videos": ["video_id_1"]}
 """
 
 
@@ -58,9 +59,11 @@ def build_video_triage_prompt(videos_data: list[dict]) -> str:
             f"   Description: {v['description'][:300]}..."
         )
     
-    return f"""Analyze these Dota 2 videos and select the TOP 3 most educational ones.
+    return f"""Analyze these Dota 2 videos and select the single BEST educational one.
+
+IMPORTANT: Only select ENGLISH-LANGUAGE videos. Skip any video with a non-English title, description, or channel name.
 
 VIDEOS:
 {chr(10).join(video_list)}
 
-Remember: Return valid JSON with up to 3 video IDs. Prioritize educational value."""
+Remember: Return valid JSON with exactly 1 video ID (or empty array if none qualify). Prioritize educational value. English only."""
