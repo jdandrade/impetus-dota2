@@ -63,14 +63,14 @@ class Settings(BaseSettings):
 
 
 # Tracked players from legacy bot
-# "76561198044301453": "batatas",Format: Steam ID 64 -> Display name (for fallback if API fails)
+# Format: Steam ID 64 -> Display name (for fallback if API fails)
 TRACKED_PLAYERS = {
     "76561198349926313": "fear",
     "76561198031378148": "rybur",
     "76561197986252478": "gil",
+    "76561198044301453": "batatas",
     "76561197994301802": "mauzaum",
     "76561198014373442": "hory",
-    "76561199837733852": "mister miagy",
 }
 
 
