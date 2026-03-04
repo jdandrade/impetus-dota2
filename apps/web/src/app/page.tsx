@@ -175,12 +175,12 @@ export default function Home() {
       {/* Background gradient */}
       <div className="fixed inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-secondary/5 pointer-events-none" />
 
-      <div className="relative max-w-5xl mx-auto px-6 py-16">
+      <div className="relative max-w-5xl mx-auto px-4 py-8 md:px-6 md:py-16">
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-16"
+          className="text-center mb-8 md:mb-16"
         >
 
           <h1 className="text-5xl md:text-7xl font-bold mb-4">
@@ -199,7 +199,7 @@ export default function Home() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="max-w-xl mx-auto mb-12"
+          className="max-w-xl mx-auto mb-8 md:mb-12"
         >
           <div className="flex gap-3">
             <div className="flex-1 relative">
@@ -251,7 +251,7 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.32 }}
-          className="text-center mb-12"
+          className="text-center mb-8 md:mb-12"
         >
           <div className="inline-flex items-center gap-2 mb-4">
             <Crown className="w-4 h-4 text-yellow-400" />

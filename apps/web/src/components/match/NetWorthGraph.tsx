@@ -93,7 +93,7 @@ export default function NetWorthGraph({ players }: NetWorthGraphProps) {
     const yAxisMax = Math.ceil(maxDiff / 5000) * 5000 || 5000;
 
     return (
-        <div className="glass rounded-xl p-6">
+        <div className="glass rounded-xl p-4 md:p-6">
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-cyber-text">
                     Gold Advantage
@@ -110,7 +110,7 @@ export default function NetWorthGraph({ players }: NetWorthGraphProps) {
                 </div>
             </div>
 
-            <div className="h-48">
+            <div className="h-36 md:h-48">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
                         data={data}

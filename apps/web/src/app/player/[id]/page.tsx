@@ -282,7 +282,7 @@ export default function PlayerPage() {
             {/* Background gradient */}
             <div className="fixed inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-secondary/5 pointer-events-none" />
 
-            <div className="relative max-w-4xl mx-auto px-6 py-8">
+            <div className="relative max-w-4xl mx-auto px-4 md:px-6 py-8">
                 {/* Header */}
                 <motion.header
                     initial={{ opacity: 0, y: -20 }}
@@ -334,9 +334,9 @@ export default function PlayerPage() {
                     >
                         {/* Profile Card */}
                         <div className="glass rounded-2xl p-6">
-                            <div className="flex items-center gap-6">
+                            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
                                 {/* Avatar */}
-                                <div className="relative w-24 h-24 rounded-xl overflow-hidden bg-cyber-surface-light flex-shrink-0">
+                                <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden bg-cyber-surface-light flex-shrink-0">
                                     {profile.avatarfull ? (
                                         <Image
                                             src={profile.avatarfull}
@@ -372,7 +372,7 @@ export default function PlayerPage() {
                                                 />
                                             </div>
                                         )}
-                                        <h1 className="text-3xl font-bold text-cyber-text">
+                                        <h1 className="text-2xl sm:text-3xl font-bold text-cyber-text">
                                             {profile.personaname}
                                         </h1>
                                     </div>
@@ -416,7 +416,7 @@ export default function PlayerPage() {
                                 </div>
 
                                 {/* External Links */}
-                                <div className="flex flex-col gap-2">
+                                <div className="flex flex-row sm:flex-col gap-2">
                                     <a
                                         href={`https://www.opendota.com/players/${accountId}`}
                                         target="_blank"
@@ -641,7 +641,7 @@ export default function PlayerPage() {
 
                                                 {/* Items - or Load button for older matches */}
                                                 {enriched?.items ? (
-                                                    <div className="flex gap-0.5 flex-shrink-0 items-center">
+                                                    <div className="hidden sm:flex gap-0.5 flex-shrink-0 items-center">
                                                         {/* Main 6 items */}
                                                         {enriched.items.slice(0, 6).map((itemId, i) => (
                                                             <div key={i} className="w-6 h-5 rounded-sm bg-cyber-surface-dark overflow-hidden">
@@ -692,7 +692,7 @@ export default function PlayerPage() {
                                                 ) : null}
 
                                                 {/* KDA & K/D/A */}
-                                                <div className="text-right flex-shrink-0 min-w-[70px]">
+                                                <div className="text-right flex-shrink-0 min-w-[60px] sm:min-w-[70px]">
                                                     {/* KDA Value */}
                                                     {(() => {
                                                         const kda = match.deaths === 0
