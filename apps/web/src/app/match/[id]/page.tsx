@@ -393,14 +393,6 @@ export default function MatchPage() {
                             animate={{ opacity: 1, y: 0 }}
                             className="space-y-8"
                         >
-                            {/* AI Coach Analysis - Only for tracked players */}
-                            <CoachAnalysis
-                                trackedPlayers={trackedPlayersInMatch}
-                                radiantWin={matchData.radiant_win}
-                                duration={matchData.duration}
-                                allPlayers={allPlayersContext}
-                            />
-
                             {/* Radiant */}
                             <Scoreboard
                                 team="radiant"
@@ -422,6 +414,14 @@ export default function MatchPage() {
 
                             {/* Gold Advantage Graph */}
                             <NetWorthGraph players={enrichedPlayers} />
+
+                            {/* AI Coach Analysis - Only for tracked players */}
+                            <CoachAnalysis
+                                trackedPlayers={trackedPlayersInMatch}
+                                radiantWin={matchData.radiant_win}
+                                duration={matchData.duration}
+                                allPlayers={allPlayersContext}
+                            />
                         </motion.div>
                     );
                 })()}
