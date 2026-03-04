@@ -214,7 +214,7 @@ export default function MatchPage() {
             {/* Background gradient */}
             <div className="fixed inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-secondary/5 pointer-events-none" />
 
-            <div className="relative max-w-7xl mx-auto px-6 py-8">
+            <div className="relative max-w-7xl mx-auto px-4 md:px-6 py-8">
                 {/* Header */}
                 <motion.header
                     initial={{ opacity: 0, y: -20 }}
@@ -230,7 +230,7 @@ export default function MatchPage() {
                         Back to Search
                     </button>
 
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div>
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full glass mb-3">
                                 <Zap className="w-3 h-3 text-brand-primary" />
@@ -242,7 +242,7 @@ export default function MatchPage() {
                         </div>
 
                         {matchData && (
-                            <div className="text-right">
+                            <div className="md:text-right">
                                 <div className="flex items-center gap-2 text-cyber-text-muted mb-1">
                                     <Clock className="w-4 h-4" />
                                     <span>
@@ -260,7 +260,7 @@ export default function MatchPage() {
                                     href={`https://stratz.com/matches/${matchId}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg glass
+                                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg glass
                                              text-cyber-text-muted hover:text-cyber-text hover:bg-cyber-surface-light/50
                                              transition-all text-sm"
                                 >

@@ -356,10 +356,10 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                         )}
                     </div>
 
-                    <div className="flex items-center gap-8 text-sm">
+                    <div className="flex items-center flex-wrap gap-3 md:gap-8 text-sm">
                         <div className="flex items-center gap-2">
                             <Target className="w-4 h-4 text-cyber-text-muted" />
-                            <span className="text-cyber-text font-mono text-lg">
+                            <span className="text-cyber-text font-mono text-sm md:text-lg">
                                 <span className="text-green-400">{totals.kills}</span>
                                 <span className="text-cyber-text-muted">/</span>
                                 <span className="text-red-400">{totals.deaths}</span>
@@ -369,16 +369,16 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                         </div>
                         <div className="flex items-center gap-2">
                             <Coins className="w-4 h-4 text-yellow-500" />
-                            <span className="text-cyber-text font-mono text-lg">
+                            <span className="text-cyber-text font-mono text-sm md:text-lg">
                                 {formatNumber(totals.netWorth)}
                             </span>
                         </div>
                         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-brand-primary/10">
                             <Zap className="w-4 h-4 text-brand-primary" />
-                            <span className={`font-bold text-lg ${getScoreColor(avgImp)}`}>
+                            <span className={`font-bold text-sm md:text-lg ${getScoreColor(avgImp)}`}>
                                 {formatScore(avgImp)}
                             </span>
-                            <span className="text-xs text-cyber-text-muted">AVG IMP</span>
+                            <span className="text-xs text-cyber-text-muted hidden sm:inline">AVG IMP</span>
                         </div>
                     </div>
                 </div>
@@ -389,23 +389,23 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                 <table className="w-full">
                     <thead>
                         <tr className="border-b border-cyber-border text-cyber-text-muted text-sm">
-                            <th className="text-left py-3 px-4 font-medium w-[200px]">Hero</th>
+                            <th className="text-left py-3 px-2 md:px-4 font-medium w-auto md:w-[200px]">Hero</th>
                             <th className="text-center py-3 px-2 font-medium">
                                 <div className="flex items-center justify-center gap-1">
                                     <Skull className="w-3 h-3" />
                                     <span>K/D/A</span>
                                 </div>
                             </th>
-                            <th className="text-left py-3 px-2 font-medium">Items</th>
-                            <th className="text-center py-3 px-2 font-medium">GPM</th>
-                            <th className="text-center py-3 px-2 font-medium">
+                            <th className="text-left py-3 px-2 font-medium hidden sm:table-cell">Items</th>
+                            <th className="text-center py-3 px-2 font-medium hidden md:table-cell">GPM</th>
+                            <th className="text-center py-3 px-2 font-medium hidden md:table-cell">
                                 <div className="flex items-center justify-center gap-1">
                                     <Crosshair className="w-3 h-3" />
                                     <span>DMG</span>
                                 </div>
                             </th>
-                            <th className="text-center py-3 px-2 font-medium">Net Worth</th>
-                            <th className="text-center py-3 px-4 font-medium w-[140px]">
+                            <th className="text-center py-3 px-2 font-medium hidden md:table-cell">Net Worth</th>
+                            <th className="text-center py-3 px-2 md:px-4 font-medium w-auto md:w-[140px]">
                                 <div className="flex items-center justify-center gap-1">
                                     <Zap className="w-4 h-4 text-brand-primary" />
                                     <span className="text-brand-primary font-semibold">IMP Score</span>
@@ -430,7 +430,7 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                         ${isExpanded ? "border-b-0" : ""}`}
                                     >
                                         {/* Hero + Player Identity */}
-                                        <td className="py-2 px-4">
+                                        <td className="py-2 px-2 md:px-4">
                                             <div className="flex items-center gap-3">
                                                 {/* Role Icon */}
                                                 <RoleIcon role={player.role} size={18} />
@@ -523,35 +523,35 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                         </td>
 
                                         {/* Items */}
-                                        <td className="py-2 px-2">
+                                        <td className="py-2 px-2 hidden sm:table-cell">
                                             <ItemRow items={player.items} itemNeutral={player.itemNeutral} />
                                         </td>
 
                                         {/* GPM */}
-                                        <td className="text-center py-2 px-2">
+                                        <td className="text-center py-2 px-2 hidden md:table-cell">
                                             <span className="font-mono text-yellow-400">{player.gpm}</span>
                                         </td>
 
                                         {/* Hero Damage */}
-                                        <td className="text-center py-2 px-2">
+                                        <td className="text-center py-2 px-2 hidden md:table-cell">
                                             <span className="font-mono text-orange-400">
                                                 {formatNumber(player.heroDamage)}
                                             </span>
                                         </td>
 
                                         {/* Net Worth */}
-                                        <td className="text-center py-2 px-2">
+                                        <td className="text-center py-2 px-2 hidden md:table-cell">
                                             <span className="font-mono text-yellow-500">
                                                 {formatNumber(player.netWorth)}
                                             </span>
                                         </td>
 
                                         {/* IMP Score - Stratz Style */}
-                                        <td className="text-center py-2 px-4">
+                                        <td className="text-center py-2 px-2 md:px-4">
                                             {player.impResult ? (
                                                 <div className="flex items-center justify-center gap-2">
                                                     <span
-                                                        className={`font-black text-2xl tabular-nums ${getScoreColor(
+                                                        className={`font-black text-lg md:text-2xl tabular-nums ${getScoreColor(
                                                             player.impResult.data.imp_score
                                                         )}`}
                                                     >
@@ -601,7 +601,7 @@ export default function Scoreboard({ team, isWinner, players, mvpPlayerIndex }: 
                                     {isExpanded && (
                                         <tr className="bg-cyber-surface-light/20 border-b border-cyber-border/50">
                                             <td colSpan={8} className="px-4 py-3">
-                                                <div className="pl-8 space-y-4">
+                                                <div className="pl-2 md:pl-8 space-y-4">
                                                     {/* Item Build Timeline */}
                                                     {player.purchaseLog && player.purchaseLog.length > 0 && (
                                                         <div>
