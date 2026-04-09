@@ -84,18 +84,26 @@ class NerdOfTheDayTracker:
         logger.info("Stopping Nerd tracker...")
     
     async def _wait_until_target_time(self) -> None:
-        """Sleep until midnight Portuguese time."""
+        """Sleep until midnight Portuguese time (DST-safe)."""
         now = datetime.now(self.PORTUGAL_TZ)
-        target = now.replace(
+        
+        # Build a naive datetime for today's target, then localize it.
+        # This ensures the correct UTC offset is used (pytz.localize picks
+        # the right offset for that date, unlike datetime.replace which
+        # preserves the source datetime's offset even across DST boundaries).
+        target_naive = now.replace(
             hour=self.TARGET_HOUR,
             minute=self.TARGET_MINUTE,
             second=0,
             microsecond=0,
-        )
+        ).replace(tzinfo=None)
+        target = self.PORTUGAL_TZ.localize(target_naive)
         
-        # If target time has passed today, wait until tomorrow
+        # If target time has passed today, move to tomorrow.
+        # normalize() adjusts a timedelta result for DST: a "day" across
+        # a spring-forward is 23h and across a fall-back is 25h.
         if now >= target:
-            target += timedelta(days=1)
+            target = self.PORTUGAL_TZ.normalize(target + timedelta(days=1))
         
         wait_seconds = (target - now).total_seconds()
         logger.info(f"Nerd tracker: Waiting {wait_seconds/3600:.1f} hours until {target.isoformat()}")
