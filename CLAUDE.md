@@ -17,6 +17,7 @@ impetus-dota2/
 ├── services/imp-engine/               # Python FastAPI scoring microservice
 ├── services/professor-impetus/        # Discord bot — Dota 2 match tracking, AI roasts
 ├── services/wow-tracker/              # Discord bot — WoW Mythic+ run tracking, AI roasts
+├── services/aoe2-tracker/             # Discord bot — AoE2 match tracking, AI roasts
 ├── data/                              # ML coefficients (penta_role_coefficients.py)
 └── scripts/                           # Training & data scripts (solve_formula.py)
 ```
@@ -35,13 +36,16 @@ impetus-dota2/
 | Build web app | `cd apps/web && pnpm build` |
 | Syntax check (professor-impetus) | `cd services/professor-impetus && python -m py_compile app/main.py` |
 | Syntax check (wow-tracker) | `cd services/wow-tracker && python -m py_compile app/main.py` |
+| Run AoE2 Discord bot | `cd services/aoe2-tracker && python -m app.main` |
+| Syntax check (aoe2-tracker) | `cd services/aoe2-tracker && python -m py_compile app/main.py` |
 
 ## Pre-Commit Checks
 
 1. **Web changes:** `cd apps/web && pnpm lint` — catches unused imports, TS errors, ESLint violations
 2. **Dota 2 bot changes:** `cd services/professor-impetus && python -m py_compile app/main.py`
 3. **WoW bot changes:** `cd services/wow-tracker && python -m py_compile app/main.py`
-4. **Significant web changes:** `cd apps/web && pnpm build`
+4. **AoE2 bot changes:** `cd services/aoe2-tracker && python -m py_compile app/main.py`
+5. **Significant web changes:** `cd apps/web && pnpm build`
 
 Watch for: unused imports when removing JSX elements, missing imports when adding components.
 
@@ -55,7 +59,7 @@ OpenDota/Stratz API → Web Client → IMP Engine → Score Response
               Gemini AI (coach analysis)
 ```
 
-The Dota 2 Discord bot (`professor-impetus`) independently polls OpenDota/Stratz for tracked players' matches, sends stats to IMP Engine, and generates AI roast summaries via Gemini. The WoW Discord bot (`wow-tracker`) polls Raider.IO for tracked characters' Mythic+ runs and generates AI roast announcements via Gemini. Both bots share player identity data from the `group-lore` package.
+The Dota 2 Discord bot (`professor-impetus`) independently polls OpenDota/Stratz for tracked players' matches, sends stats to IMP Engine, and generates AI roast summaries via Gemini. The WoW Discord bot (`wow-tracker`) polls Raider.IO for tracked characters' Mythic+ runs and generates AI roast announcements via Gemini. All three bots share player identity data from the `group-lore` package.
 
 ### IMP Scoring Engine (`services/imp-engine/`)
 
@@ -125,7 +129,7 @@ The Dota 2 Discord bot (`professor-impetus`) independently polls OpenDota/Stratz
   - `group_lore/discord_lore.py` — `DISCORD_LORE` for non-player Discord members
   - `group_lore/__init__.py` — Re-exports all public symbols
 - **Install:** `pip install packages/group-lore/` (installed in Dockerfiles of consuming services)
-- **Used by:** `professor-impetus`, `wow-tracker`
+- **Used by:** `professor-impetus`, `wow-tracker`, `aoe2-tracker`
 
 ### Dota 2 Discord Bot (`services/professor-impetus/`)
 
@@ -168,6 +172,25 @@ The Dota 2 Discord bot (`professor-impetus`) independently polls OpenDota/Stratz
 - **Dependencies:** `discord.py`, `aiohttp`, `redis`, `google-generativeai`, `pydantic`, `pydantic-settings`, `python-dotenv`, `pytz`, `group-lore`
 - **Docker:** Python 3.11-slim, installs `group-lore` from repo root, runs `python -m app.main`
 
+### AoE2 Match Tracker (`services/aoe2-tracker/`)
+
+- **Tech:** Python 3.11, discord.py ≥2.3, aiohttp, pydantic-settings
+- **Entry:** `app/main.py` — Initializes bot, Redis, Gemini, WorldsEdge client, starts tracker
+- **Core modules:**
+  - `app/tracker.py` — `AoE2Tracker`: polls WorldsEdge API for tracked players' new matches, detects group games (multiple tracked players in same match), detects friend-vs-friend matches (tracked players on opposing teams), deduplicates announcements
+  - `app/bot.py` — `build_match_embed()` (Discord embed builder), `MatchView` (Discord UI with AoE2 Insights link)
+  - `app/config.py` — `Settings` (pydantic-settings from env), `TRACKED_PLAYERS` dict (5 AoE2 players), `PROFILE_TO_PLAYER` reverse lookup, adaptive poll interval (10min normal, 30min off-hours 2-8am Portugal)
+  - `app/civilizations.py` — Civ ID → name mapping, match type ID → name mapping
+- **Services:**
+  - `app/services/worldsedge.py` — WorldsEdge API client (async, aiohttp, rate-limited), `AoE2Match` and `MatchPlayer` dataclasses, profile alias resolution/caching
+  - `app/services/gemini.py` — Gemini AI client for AoE2 roast generation
+  - `app/services/redis_store.py` — Redis state management (per-player last match ID, per-match announcement dedup, `aoe2:` key prefix)
+- **Prompts:** `app/prompts/aoe2_roast.py` — AoE2-specific system/user prompts using `group-lore` (civ picks, ELO tiers, map roasts, friend-vs-friend rivalry)
+- **Tracked players:** 5 players defined in `app/config.py` (WorldsEdge profile_id): feAr, Cego, Gil, MauZaum, Paulo
+- **API:** WorldsEdge API at `aoe-api.worldsedgelink.com` (no auth, successor to Relic Link API)
+- **Dependencies:** `discord.py`, `aiohttp`, `redis`, `google-generativeai`, `pydantic`, `pydantic-settings`, `python-dotenv`, `pytz`, `group-lore`
+- **Docker:** Python 3.11-slim, installs `group-lore` from repo root, runs `python -m app.main`
+
 ## Key Patterns and Conventions
 
 ### Role Detection
@@ -186,9 +209,10 @@ A set of hardcoded players receive special features:
 - **Web:** AI coaching analysis via Gemini on match pages (`src/lib/tracked-players.ts`)
 - **Dota 2 Bot:** Match polling, roast announcements, Nerd of the Day (`services/professor-impetus/app/config.py`)
 - **WoW Bot:** M+ run polling, roast announcements (`services/wow-tracker/app/config.py`)
+- **AoE2 Bot:** Match polling, roast announcements (`services/aoe2-tracker/app/config.py`)
 - **Group Lore:** Shared player identities, aliases, roast instructions (`packages/group-lore/group_lore/players.py`)
 
-When adding a new tracked player, update `packages/group-lore/group_lore/players.py` (Player entry + aliases), `apps/web/src/lib/tracked-players.ts` (Steam64 + Steam32 maps), `services/professor-impetus/app/config.py` (TRACKED_PLAYERS dict), and optionally `services/wow-tracker/app/config.py` (TRACKED_CHARACTERS dict) if they play WoW.
+When adding a new tracked player, update `packages/group-lore/group_lore/players.py` (Player entry + aliases), `apps/web/src/lib/tracked-players.ts` (Steam64 + Steam32 maps), `services/professor-impetus/app/config.py` (TRACKED_PLAYERS dict), and optionally `services/wow-tracker/app/config.py` (TRACKED_CHARACTERS dict) if they play WoW, and `services/aoe2-tracker/app/config.py` (TRACKED_PLAYERS dict + PROFILE_TO_PLAYER) if they play AoE2.
 
 ## Environment Variables
 
@@ -223,12 +247,21 @@ When adding a new tracked player, update `packages/group-lore/group_lore/players
 - `POLL_INTERVAL_SECONDS` — Normal hours poll interval (default: 600)
 - `OFF_HOURS_POLL_INTERVAL` — Off-hours poll interval (default: 1800)
 
+**AoE2 Discord Bot** (`services/aoe2-tracker/.env`):
+- `DISCORD_TOKEN` — Discord bot token (required)
+- `DISCORD_CHANNEL_ID` — Target channel ID (default: `1112808395653775541`)
+- `GEMINI_API_KEY` — Gemini API key (required)
+- `REDIS_URL` — Redis connection URL (default: `redis://localhost:6379`)
+- `POLL_INTERVAL_SECONDS` — Normal hours poll interval (default: 600)
+- `OFF_HOURS_POLL_INTERVAL` — Off-hours poll interval (default: 1800)
+
 ## Deployment
 
 - **Frontend:** Vercel (auto-deploys, `vercel.json` config)
 - **IMP Engine:** Railway.app (Docker, healthcheck at `/health`)
 - **Dota 2 Discord Bot:** Railway.app (Docker, restart on failure)
 - **WoW Discord Bot:** Railway.app (Docker, restart on failure)
+- **AoE2 Discord Bot:** Railway.app (Docker, restart on failure)
 - **Production URLs:**
   - Frontend: `https://impetus-dota2.vercel.app`
   - IMP Engine: `https://impetus-dota2-production.up.railway.app`

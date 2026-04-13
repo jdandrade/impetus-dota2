@@ -52,7 +52,7 @@ PLAYERS: dict[str, Player] = {
             "Elogia a sua inteligência superior. Se jogou mal, foi culpa dos colegas que não "
             "acompanham o seu cérebro gigante."
         ),
-        aliases=["mauzaum", "mister miagy", "mister_miagy", "padrezaum"],
+        aliases=["mauzaum", "mister miagy", "mister_miagy", "padrezaum", "mz"],
     ),
     "cego": Player(
         canonical_name="Cego",
@@ -144,7 +144,7 @@ PLAYERS: dict[str, Player] = {
             "Se correu mal, já está a chorar. Se correu bem, chora de alívio. "
             "Faz referências ao Benfica e às lágrimas dele."
         ),
-        aliases=["paulo", "zenyär", "zenyar", "zeny"],
+        aliases=["paulo", "zenyär", "zenyar", "zeny", "roflicious"],
     ),
 }
 
