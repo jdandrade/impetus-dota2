@@ -154,10 +154,13 @@ class AoE2Tracker:
         # Build full team rosters for embed and prompt
         all_teams = self._build_team_rosters(latest, aliases, tracked_in_match)
 
+        # Map name is only reliable for 1v1 — API returns host preference for team games
+        map_name = latest.clean_map_name if not latest.is_team_game else "Unknown"
+
         # Generate roast
         roast = await self.gemini.generate_roast(
             tracked_players=tracked_in_match,
-            map_name=latest.clean_map_name,
+            map_name=map_name,
             game_mode=latest.game_mode,
             duration_str=latest.duration_str,
             duration_seconds=latest.duration_seconds,

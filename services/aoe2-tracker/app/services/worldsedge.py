@@ -74,14 +74,22 @@ class AoE2Match:
         return self.matchtype_id in {6, 7, 8, 9, 13, 14}
 
     @property
+    def is_team_game(self) -> bool:
+        return self.max_players > 2
+
+    @property
     def clean_map_name(self) -> str:
-        """Strip .rms/.rms2 suffix and clean up map name."""
+        """Strip .rms/.rms2 suffix and clean up map name.
+
+        NOTE: For team games (2v2+), the WorldsEdge API returns the
+        host's map preference, not the actual map played. The map name
+        is only reliable for 1v1 matches.
+        """
         name = self.map_name
         for suffix in (".rms2", ".rms"):
             if name.endswith(suffix):
                 name = name[: -len(suffix)]
                 break
-        # Convert underscores and CamelCase to readable names
         name = name.replace("_", " ")
         return name
 

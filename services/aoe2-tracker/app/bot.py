@@ -44,20 +44,24 @@ def build_match_embed(
 
     is_group = len(tracked_players) > 1
     player_names = ", ".join(p["nickname"] for p in tracked_players)
-    map_name = match.clean_map_name
+
+    # Map name is only reliable for 1v1 — WorldsEdge API returns the
+    # host's map preference for team games, not the actual map played.
+    show_map = not match.is_team_game
+    map_name = match.clean_map_name if show_map else None
+    map_suffix = f" on {map_name}" if map_name else ""
 
     # Title
     if tracked_vs_tracked:
-        # Find who is on which side
         teams_by_player: dict[int, list[str]] = {}
         for p in tracked_players:
             teams_by_player.setdefault(p["team_id"], []).append(p["nickname"])
         team_strs = [" & ".join(names) for names in teams_by_player.values()]
-        title = f"⚔️ {' vs '.join(team_strs)} — {match.game_mode} on {map_name}"
+        title = f"⚔️ {' vs '.join(team_strs)} — {match.game_mode}{map_suffix}"
     elif is_group:
-        title = f"🏰 {player_names} — {match.game_mode} on {map_name}"
+        title = f"🏰 {player_names} — {match.game_mode}{map_suffix}"
     else:
-        title = f"🏰 {player_names} — {match.game_mode} on {map_name}"
+        title = f"🏰 {player_names} — {match.game_mode}{map_suffix}"
 
     # Color
     if tracked_vs_tracked:
@@ -80,12 +84,13 @@ def build_match_embed(
         inline=True,
     )
 
-    # Map field
-    embed.add_field(
-        name="🗺️ Map",
-        value=map_name,
-        inline=True,
-    )
+    # Map field (only for 1v1 — unreliable for team games)
+    if map_name:
+        embed.add_field(
+            name="🗺️ Map",
+            value=map_name,
+            inline=True,
+        )
 
     # Result + ELO for tracked players
     result_lines = []
