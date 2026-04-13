@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "group-lore"
+version = "0.1.0"
+description = "Shared player identities and group lore for Impetus Discord bots"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+include = ["group_lore*"]
