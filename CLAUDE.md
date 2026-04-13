@@ -8,13 +8,15 @@ Impetus is an open-source Dota 2 performance analytics platform. It calculates I
 
 ## Monorepo Structure
 
-Three services in a pnpm workspace (`pnpm-workspace.yaml` includes `apps/*`, `services/*`, `packages/*`):
+A pnpm workspace (`pnpm-workspace.yaml` includes `apps/*`, `services/*`, `packages/*`):
 
 ```
 impetus-dota2/
 ├── apps/web/                          # Next.js 14 frontend (App Router)
+├── packages/group-lore/               # Shared Python package: player identities & group lore
 ├── services/imp-engine/               # Python FastAPI scoring microservice
-├── services/professor-impetus/        # Discord bot (match tracking, AI roasts)
+├── services/professor-impetus/        # Discord bot — Dota 2 match tracking, AI roasts
+├── services/wow-tracker/              # Discord bot — WoW Mythic+ run tracking, AI roasts
 ├── data/                              # ML coefficients (penta_role_coefficients.py)
 └── scripts/                           # Training & data scripts (solve_formula.py)
 ```
@@ -26,17 +28,20 @@ impetus-dota2/
 | Install all deps | `pnpm install` |
 | Run web client | `cd apps/web && pnpm dev` |
 | Run IMP Engine | `cd services/imp-engine && uvicorn app.main:app --reload --port 8000` |
-| Run Discord bot | `cd services/professor-impetus && python app/main.py` |
+| Run Dota 2 Discord bot | `cd services/professor-impetus && python app/main.py` |
+| Run WoW Discord bot | `cd services/wow-tracker && python -m app.main` |
 | Run engine tests | `cd services/imp-engine && pytest` |
 | Lint web app | `cd apps/web && pnpm lint` |
 | Build web app | `cd apps/web && pnpm build` |
-| Python syntax check | `cd services/professor-impetus && python -m py_compile app/main.py` |
+| Syntax check (professor-impetus) | `cd services/professor-impetus && python -m py_compile app/main.py` |
+| Syntax check (wow-tracker) | `cd services/wow-tracker && python -m py_compile app/main.py` |
 
 ## Pre-Commit Checks
 
 1. **Web changes:** `cd apps/web && pnpm lint` — catches unused imports, TS errors, ESLint violations
-2. **Discord bot changes:** `cd services/professor-impetus && python -m py_compile app/main.py`
-3. **Significant web changes:** `cd apps/web && pnpm build`
+2. **Dota 2 bot changes:** `cd services/professor-impetus && python -m py_compile app/main.py`
+3. **WoW bot changes:** `cd services/wow-tracker && python -m py_compile app/main.py`
+4. **Significant web changes:** `cd apps/web && pnpm build`
 
 Watch for: unused imports when removing JSX elements, missing imports when adding components.
 
@@ -50,7 +55,7 @@ OpenDota/Stratz API → Web Client → IMP Engine → Score Response
               Gemini AI (coach analysis)
 ```
 
-The Discord bot (`professor-impetus`) independently polls OpenDota/Stratz for tracked players' matches, sends stats to IMP Engine, and generates AI roast summaries via Gemini.
+The Dota 2 Discord bot (`professor-impetus`) independently polls OpenDota/Stratz for tracked players' matches, sends stats to IMP Engine, and generates AI roast summaries via Gemini. The WoW Discord bot (`wow-tracker`) polls Raider.IO for tracked characters' Mythic+ runs and generates AI roast announcements via Gemini. Both bots share player identity data from the `group-lore` package.
 
 ### IMP Scoring Engine (`services/imp-engine/`)
 
@@ -111,7 +116,18 @@ The Discord bot (`professor-impetus`) independently polls OpenDota/Stratz for tr
 - **Images:** Remote patterns configured for `cdn.cloudflare.steamstatic.com`, `cdn.dota2.com`, `www.opendota.com`
 - **Deployment:** Vercel (`vercel.json` with npm build/install)
 
-### Discord Bot (`services/professor-impetus/`)
+### Shared Player Lore (`packages/group-lore/`)
+
+- **Tech:** Python 3.11, dataclasses, setuptools
+- **Purpose:** Centralizes player identities, personality archetypes, aliases, and roast instructions shared across all Discord bots
+- **Key files:**
+  - `group_lore/players.py` — `Player` dataclass, `PLAYERS` dict (8 players), `resolve_player(name)` (case-insensitive alias substring match), `build_players_prompt_block()`, `build_name_mappings()`
+  - `group_lore/discord_lore.py` — `DISCORD_LORE` for non-player Discord members
+  - `group_lore/__init__.py` — Re-exports all public symbols
+- **Install:** `pip install packages/group-lore/` (installed in Dockerfiles of consuming services)
+- **Used by:** `professor-impetus`, `wow-tracker`
+
+### Dota 2 Discord Bot (`services/professor-impetus/`)
 
 - **Tech:** Python 3.11, discord.py ≥2.3, aiohttp, pydantic-settings
 - **Entry:** `app/main.py` — Initializes bot, match tracker, YouTube tracker, nerd tracker
@@ -132,8 +148,25 @@ The Discord bot (`professor-impetus`) independently polls OpenDota/Stratz for tr
 - **Prompts:** `app/prompts/` — Gemini prompt templates for roasts and video triage
 - **Tracked players:** 6 players defined in `app/config.py` (Steam64 IDs)
 - **Dependencies:** `discord.py`, `aiohttp`, `redis`, `google-generativeai`, `google-api-python-client`, `pydantic`, `pydantic-settings`, `python-dotenv`, `pytz`
-- **Docker:** Python 3.11-slim, runs `python -m app.main`
+- **Docker:** Python 3.11-slim, installs `group-lore` from repo root, runs `python -m app.main`
 - **Railway:** Dockerfile builder, restart on failure (max 5 retries)
+
+### WoW Mythic+ Tracker (`services/wow-tracker/`)
+
+- **Tech:** Python 3.11, discord.py ≥2.3, aiohttp, pydantic-settings
+- **Entry:** `app/main.py` — Initializes bot, Redis, Gemini, Raider.IO client, starts tracker
+- **Core modules:**
+  - `app/tracker.py` — `MythicPlusTracker`: polls Raider.IO for tracked characters' new M+ runs, detects group runs (multiple tracked players in same run), deduplicates announcements
+  - `app/bot.py` — `build_run_embed()` (Discord embed builder), `RunView` (Discord UI with Raider.IO link)
+  - `app/config.py` — `Settings` (pydantic-settings from env), `TRACKED_CHARACTERS` dict (7 WoW characters across 6 players), adaptive poll interval (10min normal, 30min off-hours 2-8am Portugal)
+- **Services:**
+  - `app/services/raiderio.py` — Raider.IO API client (async, aiohttp, rate-limited), `CURRENT_SEASON` constant (must be updated each WoW season)
+  - `app/services/gemini.py` — Gemini AI client for M+ roast generation
+  - `app/services/redis_store.py` — Redis state management (per-character last run ID, per-run announcement dedup)
+- **Prompts:** `app/prompts/mythicplus_roast.py` — WoW-specific system/user prompts using `group-lore`
+- **Tracked characters:** 7 characters defined in `app/config.py` (Raider.IO name/realm/region)
+- **Dependencies:** `discord.py`, `aiohttp`, `redis`, `google-generativeai`, `pydantic`, `pydantic-settings`, `python-dotenv`, `pytz`, `group-lore`
+- **Docker:** Python 3.11-slim, installs `group-lore` from repo root, runs `python -m app.main`
 
 ## Key Patterns and Conventions
 
@@ -151,9 +184,11 @@ Steam64 → Steam32 (account ID): subtract `76561197960265728`. Used in both web
 ### Tracked Players
 A set of hardcoded players receive special features:
 - **Web:** AI coaching analysis via Gemini on match pages (`src/lib/tracked-players.ts`)
-- **Bot:** Match polling, roast announcements, Nerd of the Day (`app/config.py`)
+- **Dota 2 Bot:** Match polling, roast announcements, Nerd of the Day (`services/professor-impetus/app/config.py`)
+- **WoW Bot:** M+ run polling, roast announcements (`services/wow-tracker/app/config.py`)
+- **Group Lore:** Shared player identities, aliases, roast instructions (`packages/group-lore/group_lore/players.py`)
 
-When adding a new tracked player, update both `apps/web/src/lib/tracked-players.ts` (Steam64 + Steam32 maps) and `services/professor-impetus/app/config.py` (TRACKED_PLAYERS dict).
+When adding a new tracked player, update `packages/group-lore/group_lore/players.py` (Player entry + aliases), `apps/web/src/lib/tracked-players.ts` (Steam64 + Steam32 maps), `services/professor-impetus/app/config.py` (TRACKED_PLAYERS dict), and optionally `services/wow-tracker/app/config.py` (TRACKED_CHARACTERS dict) if they play WoW.
 
 ## Environment Variables
 
@@ -166,7 +201,7 @@ When adding a new tracked player, update both `apps/web/src/lib/tracked-players.
 - `PORT` — Server port (default: `8000`)
 - `ALLOWED_ORIGINS` — CORS origins, comma-separated or `*`
 
-**Discord Bot** (`services/professor-impetus/.env`):
+**Dota 2 Discord Bot** (`services/professor-impetus/.env`):
 - `DISCORD_TOKEN` — Discord bot token (required)
 - `DISCORD_CHANNEL_ID` — Target channel ID
 - `GEMINI_API_KEY` — Gemini API key (required)
@@ -180,11 +215,20 @@ When adding a new tracked player, update both `apps/web/src/lib/tracked-players.
 - `YOUTUBE_POST_HOUR_GMT` — Hour to post daily video (default: 21)
 - `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` — Email notifications (optional)
 
+**WoW Discord Bot** (`services/wow-tracker/.env`):
+- `DISCORD_TOKEN` — Discord bot token (required)
+- `DISCORD_CHANNEL_ID` — Target channel ID (default: `888477897105506344`)
+- `GEMINI_API_KEY` — Gemini API key (required)
+- `REDIS_URL` — Redis connection URL (default: `redis://localhost:6379`)
+- `POLL_INTERVAL_SECONDS` — Normal hours poll interval (default: 600)
+- `OFF_HOURS_POLL_INTERVAL` — Off-hours poll interval (default: 1800)
+
 ## Deployment
 
 - **Frontend:** Vercel (auto-deploys, `vercel.json` config)
 - **IMP Engine:** Railway.app (Docker, healthcheck at `/health`)
-- **Discord Bot:** Railway.app (Docker, restart on failure)
+- **Dota 2 Discord Bot:** Railway.app (Docker, restart on failure)
+- **WoW Discord Bot:** Railway.app (Docker, restart on failure)
 - **Production URLs:**
   - Frontend: `https://impetus-dota2.vercel.app`
   - IMP Engine: `https://impetus-dota2-production.up.railway.app`

@@ -7,11 +7,11 @@ COPY packages/group-lore/ /tmp/group-lore/
 RUN pip install --no-cache-dir /tmp/group-lore/
 
 # Copy and install dependencies
-COPY services/professor-impetus/requirements.txt .
+COPY services/wow-tracker/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy app code
-COPY services/professor-impetus/app/ ./app/
+COPY services/wow-tracker/app/ ./app/
 
 # Run the bot
 CMD ["python", "-m", "app.main"]
