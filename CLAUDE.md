@@ -16,8 +16,7 @@ impetus-dota2/
 ├── services/imp-engine/               # Python FastAPI scoring microservice
 ├── services/professor-impetus/        # Discord bot (match tracking, AI roasts)
 ├── data/                              # ML coefficients (penta_role_coefficients.py)
-├── scripts/                           # Training & data scripts (solve_formula.py)
-└── PLAN.md                            # Architecture plan & API contract
+└── scripts/                           # Training & data scripts (solve_formula.py)
 ```
 
 ## Development Commands
