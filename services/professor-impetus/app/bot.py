@@ -355,3 +355,29 @@ class ProfessorBot(discord.Client):
             logger.exception(f"Error sending Nerd of the Day: {e}")
             return False
 
+    async def send_nerd_of_day_error(self) -> bool:
+        """Send an error notification when Nerd of the Day data couldn't be fetched."""
+        if not self._channel:
+            self._channel = self.get_channel(self.channel_id)
+
+        if not self._channel:
+            logger.error(f"Channel {self.channel_id} not found")
+            return False
+
+        try:
+            embed = discord.Embed(
+                title="⚠️ Nerd do Dia — Indisponível",
+                description=(
+                    "Não foi possível obter dados dos jogadores hoje. "
+                    "As APIs do OpenDota e Stratz estavam indisponíveis."
+                ),
+                color=discord.Color.orange(),
+            )
+            embed.set_footer(text="Professor Impetus - Nerd do Dia")
+            await self._channel.send(embed=embed)
+            logger.info("Sent Nerd of the Day error notification")
+            return True
+        except Exception as e:
+            logger.exception(f"Error sending Nerd of the Day error notification: {e}")
+            return False
+

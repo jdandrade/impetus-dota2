@@ -682,89 +682,157 @@ async def get_player_yesterday_stats(
                 )
             
             logger.info(f"Found {len(yesterday_matches)} matches yesterday for account {account_id}")
-            
-            # Process each match
-            games: List[GameStats] = []
-            total_duration = 0
-            wins = 0
-            losses = 0
-            role_stats: Dict[str, List[int]] = {}  # role -> [games, wins]
-            hero_stats: Dict[str, List[int]] = {}  # hero_name -> [games, wins]
-            
-            for match in yesterday_matches:
-                match_id = match.get("match_id")
-                hero_id = match.get("hero_id", 0)
-                hero_name = HERO_NAMES.get(hero_id, f"Hero #{hero_id}")
-                kills = match.get("kills", 0)
-                deaths = match.get("deaths", 0)
-                assists = match.get("assists", 0)
-                duration = match.get("duration", 0)
-                player_slot = match.get("player_slot", 0)
-                radiant_win = match.get("radiant_win", False)
-                
-                is_radiant = player_slot < 128
-                is_win = (is_radiant and radiant_win) or (not is_radiant and not radiant_win)
-                
-                # Determine role from lane (simplified version)
-                lane = match.get("lane")
-                if lane == 2:
-                    role = "mid"
-                elif lane == 1:
-                    role = "carry" if is_radiant else "offlane"
-                elif lane == 3:
-                    role = "offlane" if is_radiant else "carry"
-                else:
-                    role = "support"  # Default for jungle/roaming
-                
-                game = GameStats(
-                    match_id=match_id,
-                    hero_id=hero_id,
-                    hero_name=hero_name,
-                    kills=kills,
-                    deaths=deaths,
-                    assists=assists,
-                    is_win=is_win,
-                    duration_seconds=duration,
-                    role=role,
-                )
-                games.append(game)
-                
-                # Aggregate stats
-                total_duration += duration
-                if is_win:
-                    wins += 1
-                else:
-                    losses += 1
-                
-                # Role stats
-                if role not in role_stats:
-                    role_stats[role] = [0, 0]
-                role_stats[role][0] += 1
-                if is_win:
-                    role_stats[role][1] += 1
-                
-                # Hero stats
-                if hero_name not in hero_stats:
-                    hero_stats[hero_name] = [0, 0]
-                hero_stats[hero_name][0] += 1
-                if is_win:
-                    hero_stats[hero_name][1] += 1
-            
-            # Convert stats to tuples
-            role_stats_tuples = {r: tuple(s) for r, s in role_stats.items()}
-            hero_stats_tuples = {h: tuple(s) for h, s in hero_stats.items()}
-            
-            return YesterdayStats(
-                games_played=len(games),
-                total_duration_seconds=total_duration,
-                wins=wins,
-                losses=losses,
-                role_stats=role_stats_tuples,
-                hero_stats=hero_stats_tuples,
-                games=games,
-            )
+            return _build_yesterday_stats(yesterday_matches)
             
         except Exception as e:
             logger.exception(f"Error fetching yesterday stats for {account_id}: {e}")
             return None
+
+
+def _build_yesterday_stats(matches: list) -> YesterdayStats:
+    """
+    Aggregate a list of raw match dicts into YesterdayStats.
+
+    Works with both OpenDota and Stratz match formats — expects keys:
+    match_id, hero_id, kills, deaths, assists, duration, player_slot,
+    radiant_win, lane.
+    """
+    games: List[GameStats] = []
+    total_duration = 0
+    wins = 0
+    losses = 0
+    role_stats: Dict[str, List[int]] = {}
+    hero_stats: Dict[str, List[int]] = {}
+
+    for match in matches:
+        match_id = match.get("match_id")
+        hero_id = match.get("hero_id", 0)
+        hero_name = HERO_NAMES.get(hero_id, f"Hero #{hero_id}")
+        kills = match.get("kills", 0)
+        deaths = match.get("deaths", 0)
+        assists = match.get("assists", 0)
+        duration = match.get("duration", 0)
+        player_slot = match.get("player_slot", 0)
+        radiant_win = match.get("radiant_win", False)
+
+        is_radiant = player_slot < 128
+        is_win = (is_radiant and radiant_win) or (not is_radiant and not radiant_win)
+
+        lane = match.get("lane")
+        if lane == 2:
+            role = "mid"
+        elif lane == 1:
+            role = "carry" if is_radiant else "offlane"
+        elif lane == 3:
+            role = "offlane" if is_radiant else "carry"
+        else:
+            role = "support"
+
+        game = GameStats(
+            match_id=match_id,
+            hero_id=hero_id,
+            hero_name=hero_name,
+            kills=kills,
+            deaths=deaths,
+            assists=assists,
+            is_win=is_win,
+            duration_seconds=duration,
+            role=role,
+        )
+        games.append(game)
+
+        total_duration += duration
+        if is_win:
+            wins += 1
+        else:
+            losses += 1
+
+        if role not in role_stats:
+            role_stats[role] = [0, 0]
+        role_stats[role][0] += 1
+        if is_win:
+            role_stats[role][1] += 1
+
+        if hero_name not in hero_stats:
+            hero_stats[hero_name] = [0, 0]
+        hero_stats[hero_name][0] += 1
+        if is_win:
+            hero_stats[hero_name][1] += 1
+
+    role_stats_tuples = {r: tuple(s) for r, s in role_stats.items()}
+    hero_stats_tuples = {h: tuple(s) for h, s in hero_stats.items()}
+
+    return YesterdayStats(
+        games_played=len(games),
+        total_duration_seconds=total_duration,
+        wins=wins,
+        losses=losses,
+        role_stats=role_stats_tuples,
+        hero_stats=hero_stats_tuples,
+        games=games,
+    )
+
+
+async def get_player_yesterday_stats_with_fallback(
+    account_id: int,
+    fallback_name: str = "Unknown"
+) -> Optional[YesterdayStats]:
+    """
+    Fetch yesterday's stats with automatic Stratz fallback on rate limit.
+
+    Returns YesterdayStats (possibly with 0 games) on success, None on failure.
+    """
+    result = await get_player_yesterday_stats(account_id, fallback_name)
+
+    if result is not None:
+        return result
+
+    # OpenDota failed — try Stratz if we're rate-limited
+    if not _rate_limiter.is_backing_off():
+        return None
+
+    stratz = _get_stratz_provider()
+    if stratz is None:
+        logger.warning("[Fallback] Stratz not configured, cannot fallback for yesterday stats")
+        return None
+
+    logger.info(f"[Fallback] OpenDota rate limited, trying Stratz yesterday stats for {account_id}")
+
+    try:
+        import pytz
+        from datetime import datetime, timedelta
+
+        portugal_tz = pytz.timezone("Europe/Lisbon")
+        now_portugal = datetime.now(portugal_tz)
+        yesterday_start = (now_portugal - timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        yesterday_end = yesterday_start + timedelta(days=1)
+        start_ts = int(yesterday_start.timestamp())
+        end_ts = int(yesterday_end.timestamp())
+
+        stratz_matches = await stratz.get_recent_matches(account_id, start_ts, end_ts)
+
+        if stratz_matches is None:
+            logger.warning(f"[Fallback] Stratz also failed for yesterday stats ({account_id})")
+            return None
+
+        if not stratz_matches:
+            logger.info(f"[Fallback] Stratz found no matches yesterday for {account_id}")
+            return YesterdayStats(
+                games_played=0,
+                total_duration_seconds=0,
+                wins=0,
+                losses=0,
+                role_stats={},
+                hero_stats={},
+                games=[],
+            )
+
+        logger.info(f"[Fallback] Stratz found {len(stratz_matches)} matches yesterday for {account_id}")
+        return _build_yesterday_stats(stratz_matches)
+
+    except Exception as e:
+        logger.exception(f"[Fallback] Stratz yesterday stats failed: {e}")
+        return None
 
