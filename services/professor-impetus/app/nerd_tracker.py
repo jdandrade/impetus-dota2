@@ -12,7 +12,7 @@ import pytz
 
 from app.bot import ProfessorBot
 from app.config import TRACKED_PLAYERS, convert_steam_id64_to_account_id, Settings
-from app.services.opendota import get_player_yesterday_stats, YesterdayStats
+from app.services.opendota import get_player_yesterday_stats_with_fallback, YesterdayStats
 from app.services.gemini import GeminiClient
 
 logger = logging.getLogger(__name__)
@@ -117,20 +117,33 @@ class NerdOfTheDayTracker:
             
             # Fetch stats for all tracked players
             player_stats: dict[str, tuple[str, YesterdayStats]] = {}
-            
+            api_failures = 0
+
             for steam_id, fallback_name in TRACKED_PLAYERS.items():
                 account_id = convert_steam_id64_to_account_id(steam_id)
-                
-                stats = await get_player_yesterday_stats(account_id, fallback_name)
-                if stats and stats.games_played > 0:
+
+                stats = await get_player_yesterday_stats_with_fallback(account_id, fallback_name)
+                if stats is None:
+                    api_failures += 1
+                    logger.warning(f"API failure fetching stats for {fallback_name}")
+                elif stats.games_played > 0:
                     player_stats[steam_id] = (fallback_name, stats)
                     logger.info(f"{fallback_name}: {stats.games_played} games, {stats.total_hours:.1f}h")
-                
+
                 # Rate limit between API calls
                 await asyncio.sleep(2)
-            
+
             if not player_stats:
-                logger.info("No players played yesterday, skipping Nerd of the Day")
+                if api_failures == len(TRACKED_PLAYERS):
+                    logger.error("ALL API calls failed for Nerd of the Day")
+                    await self.bot.send_nerd_of_day_error()
+                elif api_failures > 0:
+                    logger.warning(
+                        f"Nerd of the Day: {api_failures}/{len(TRACKED_PLAYERS)} API calls failed, "
+                        f"remaining players had 0 games"
+                    )
+                else:
+                    logger.info("No players played yesterday, skipping Nerd of the Day")
                 return
             
             # Find the nerd (most games played)
@@ -207,7 +220,7 @@ class NerdOfTheDayTracker:
             )
             
             # Send to Discord
-            await self.bot.send_nerd_of_day(
+            success = await self.bot.send_nerd_of_day(
                 player_name=nerd_name,
                 steam_id=nerd_steam_id,
                 games_played=nerd_stats.games_played,
@@ -216,8 +229,11 @@ class NerdOfTheDayTracker:
                 losses=nerd_stats.losses,
                 roast=roast,
             )
-            
-            logger.info(f"Successfully posted Nerd of the Day: {nerd_name}")
+
+            if success:
+                logger.info(f"Successfully posted Nerd of the Day: {nerd_name}")
+            else:
+                logger.error(f"Failed to send Nerd of the Day to Discord for {nerd_name}")
             
         except Exception as e:
             logger.exception(f"Error posting Nerd of the Day: {e}")

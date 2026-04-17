@@ -232,6 +232,77 @@ class StratzProvider:
             all_players=None,  # Not fetching all players for now
         )
 
+    async def get_recent_matches(
+        self,
+        account_id: int,
+        start_timestamp: int,
+        end_timestamp: int,
+    ) -> Optional[List[dict]]:
+        """
+        Fetch matches within a time range for a player.
+
+        Returns a list of lightweight match dicts compatible with the
+        yesterday-stats aggregation logic, or None on failure.
+        """
+        query = """
+        query GetPlayerRecentMatches($steamAccountId: Long!, $after: Long, $before: Long) {
+            player(steamAccountId: $steamAccountId) {
+                matches(request: { take: 50, startDateTime: $after, endDateTime: $before }) {
+                    id
+                    didRadiantWin
+                    durationSeconds
+                    startDateTime
+                    players(steamAccountId: $steamAccountId) {
+                        heroId
+                        kills
+                        deaths
+                        assists
+                        isRadiant
+                        lane
+                    }
+                }
+            }
+        }
+        """
+
+        result = await self._query(query, {
+            "steamAccountId": account_id,
+            "after": start_timestamp,
+            "before": end_timestamp,
+        })
+        if not result or not result.get("player"):
+            return None
+
+        matches = result["player"].get("matches", [])
+        if not matches:
+            return []
+
+        out = []
+        for match in matches:
+            player_data = (match.get("players") or [{}])[0]
+            if not player_data:
+                continue
+
+            is_radiant = player_data.get("isRadiant", True)
+            lane_raw = player_data.get("lane")
+            lane = lane_raw if isinstance(lane_raw, int) else None
+
+            out.append({
+                "match_id": match.get("id", 0),
+                "hero_id": player_data.get("heroId", 0),
+                "kills": player_data.get("kills", 0),
+                "deaths": player_data.get("deaths", 0),
+                "assists": player_data.get("assists", 0),
+                "duration": match.get("durationSeconds", 0),
+                "start_time": match.get("startDateTime", 0),
+                "player_slot": 0 if is_radiant else 128,
+                "radiant_win": match.get("didRadiantWin", False),
+                "lane": lane,
+            })
+
+        logger.info(f"[Stratz] Found {len(out)} matches for account {account_id}")
+        return out
+
 
 # Singleton instance (initialized with token at runtime)
 _stratz_provider: Optional[StratzProvider] = None
