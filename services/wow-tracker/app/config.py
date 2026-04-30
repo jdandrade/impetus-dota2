@@ -39,6 +39,12 @@ TRACKED_CHARACTERS = {
         "region": "eu",
         "player": "feAr",
     },
+    "fearbrew-aggra-portugues-eu": {
+        "name": "Fearbrew",
+        "realm": "aggra-português",
+        "region": "eu",
+        "player": "feAr",
+    },
     "zenyar-grim-batol-eu": {
         "name": "Zenyär",
         "realm": "grim-batol",
@@ -53,6 +59,12 @@ TRACKED_CHARACTERS = {
     },
     "padrezaum-grim-batol-eu": {
         "name": "Padrezaum",
+        "realm": "grim-batol",
+        "region": "eu",
+        "player": "MauZaum",
+    },
+    "mauzaum-grim-batol-eu": {
+        "name": "MauZaum",
         "realm": "grim-batol",
         "region": "eu",
         "player": "MauZaum",
