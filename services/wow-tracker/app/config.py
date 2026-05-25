@@ -45,6 +45,12 @@ TRACKED_CHARACTERS = {
         "region": "eu",
         "player": "feAr",
     },
+    "feark-aggra-portugues-eu": {
+        "name": "Feark",
+        "realm": "aggra-português",
+        "region": "eu",
+        "player": "feAr",
+    },
     "zenyar-grim-batol-eu": {
         "name": "Zenyär",
         "realm": "grim-batol",
@@ -83,6 +89,12 @@ TRACKED_CHARACTERS = {
     },
     "dabadi-grim-batol-eu": {
         "name": "Dabadi",
+        "realm": "grim-batol",
+        "region": "eu",
+        "player": "Careca",
+    },
+    "babibi-grim-batol-eu": {
+        "name": "Babibi",
         "realm": "grim-batol",
         "region": "eu",
         "player": "Careca",

@@ -129,7 +129,7 @@ PLAYERS: dict[str, Player] = {
             "Se alguém joga mal, o Careca já tinha avisado. Se joga bem, é porque "
             "seguiu os conselhos do Careca."
         ),
-        aliases=["careca", "dabadi"],
+        aliases=["careca", "dabadi", "babibi"],
     ),
     "paulo": Player(
         canonical_name="Paulo",
