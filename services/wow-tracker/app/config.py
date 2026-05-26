@@ -45,12 +45,13 @@ TRACKED_CHARACTERS = {
         "region": "eu",
         "player": "feAr",
     },
-    "feark-aggra-portugues-eu": {
-        "name": "Feark",
-        "realm": "aggra-português",
-        "region": "eu",
-        "player": "feAr",
-    },
+    # Temporarily hidden — re-enable when ready
+    # "feark-aggra-portugues-eu": {
+    #     "name": "Feark",
+    #     "realm": "aggra-português",
+    #     "region": "eu",
+    #     "player": "feAr",
+    # },
     "zenyar-grim-batol-eu": {
         "name": "Zenyär",
         "realm": "grim-batol",
