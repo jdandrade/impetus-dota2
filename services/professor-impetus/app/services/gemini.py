@@ -12,6 +12,7 @@ import google.generativeai as genai
 from app.services.opendota import MatchData
 from app.services.imp_engine import IMPResult
 from app.prompts.roast_prompt import SYSTEM_PROMPT, build_user_prompt
+from app.prompts.fallback_roasts import get_fallback_roast
 from app.prompts.video_triage_prompt import (
     SYSTEM_PROMPT as VIDEO_TRIAGE_SYSTEM_PROMPT,
     build_video_triage_prompt,
@@ -104,7 +105,7 @@ class GeminiClient:
             
         except Exception as e:
             logger.exception(f"Error generating roast for {player_name}: {e}")
-            return self._fallback_roast(player_name, imp_result.imp_score)
+            return get_fallback_roast(player_name, match, imp_result)
     
     async def triage_videos(self, videos: list, max_retries: int = 2) -> list[str]:
         """
@@ -212,15 +213,6 @@ class GeminiClient:
                 pass
         
         return None
-    
-    def _fallback_roast(self, player_name: str, imp_score: float) -> str:
-        """Generate a simple fallback roast if Gemini fails."""
-        if imp_score >= 20:
-            return f"**{player_name}**, com um IMP de **{imp_score:.1f}**, até o professor está surpreso. Milagre do Natal? 🎄"
-        elif imp_score >= 0:
-            return f"**{player_name}**, **{imp_score:.1f}** de IMP... Nem bom nem mau, apenas medíocre. 😐"
-        else:
-            return f"**{player_name}**, IMP **{imp_score:.1f}**?! O professor já ligou para os teus pais. 📞"
     
     async def generate_nerd_roast(
         self,
