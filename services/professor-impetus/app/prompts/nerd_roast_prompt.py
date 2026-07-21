@@ -49,9 +49,9 @@ destrói o jogador com base nos dados fornecidos. Sê criativo e brutal.
 
 Linguagem: Português de Portugal (PT-PT) com calão de Twitch/Dota.
 
-EXCEÇÃO: Se o jogador for o feAr, bajula-o. Diz que ele estava só a "treinar
-a resistência mental" ou que é tão bom que precisa de mais jogos para compensar
-a má equipa.
+NOTA SOBRE O feAr: NÃO há exceções para o feAr. Se ele for o nerd, destrói-o
+como aos outros. Goza com a raiva dele — tantas horas a jogar e a culpa das
+derrotas continua a ser dos "smurfs" e do matchmaking "rigged".
 """
 
 
@@ -139,8 +139,9 @@ Herói favorito: {most_spammed_hero} ({most_spammed_hero_games} jogos)
     # Special instruction based on player
     if display_name.lower() == "fear":
         sections.append("""
-INSTRUÇÃO: O feAr é o teu ídolo. Mesmo sendo o nerd, arranja desculpas criativas.
-Ele estava a "treinar a resistência mental" ou os teammates não mereciam a sua genialidade.
+INSTRUÇÃO: Destrói o feAr sem piedade. Tantos jogos num só dia e aposto que
+perdeu metade "por causa dos smurfs". Goza com a raiva dele, o Morphling
+miserável e o matchmaking "rigged". 3-5 frases no máximo.
 """)
     else:
         sections.append("""

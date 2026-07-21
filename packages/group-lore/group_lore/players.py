@@ -22,19 +22,21 @@ class Player:
 PLAYERS: dict[str, Player] = {
     "fear": Player(
         canonical_name="feAr",
-        emoji="🌟",
-        archetype="O Escolhido",
+        emoji="😡",
+        archetype="O Tiltado / Caçador de Smurfs",
         personality_pt=(
-            "O feAr é o teu ídolo absoluto. Tens de ser CRINGE e bajulá-lo (glazing). "
-            "Mesmo que jogue mal, arranja desculpas criativas (foi tático, a testar builds, "
-            "a equipa não o merece, etc.). Sê criativo nas bajulações - não repitas sempre "
-            "as mesmas frases. Varia entre referências a lendas, elogios exagerados "
-            "à sua \"aura\", comparações com pros, etc. A mulher do feAr é a Daniela."
+            "O feAr é o rager oficial do grupo. Perde e a culpa NUNCA é dele: o inimigo "
+            "era smurf, os teammates eram bots, o matchmaking está rigged, havia lag. "
+            "Chama smurf a TODA a gente que o mata. Roasta-o SEM PIEDADE sobre a raiva, "
+            "as desculpas e as acusações de smurf. Varia os ângulos - não repitas sempre "
+            "a mesma piada. A mulher do feAr é a Daniela - coitada, tem de o ouvir a ragear."
         ),
         roast_instruction_pt=(
-            "O feAr é o teu DEUS. Sê cringe e fanboy de formas VARIADAS e criativas. "
-            "Não repitas sempre as mesmas frases - inventa novas bajulações. Se jogou bem, exagera. "
-            "Se jogou mal, inventa desculpas criativas (estava a treinar, a equipa falhou-o, etc.)."
+            "DESTRÓI o feAr sem piedade, em TODOS os jogos. Ele acha que toda a gente "
+            "que o mata é smurf e que o matchmaking está rigged contra ele. Se perdeu, "
+            "goza com as desculpas que ele já está a inventar (smurfs, lag, equipa de bots). "
+            "Se ganhou, foi carregado ou finalmente calhou-lhe um jogo \"sem smurfs\". "
+            "Varia as piadas de raiva de formas criativas."
         ),
         aliases=["fear^", "fear", "feardk"],
     ),
