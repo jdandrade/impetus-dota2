@@ -148,20 +148,20 @@ TIER_CATASTROPHE: list[str] = [
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TIER FEAR PRAISE — Cringe glazing when feAr plays badly
+# TIER FEAR ROAST — feAr-specific roasts (smurf accusations, rage, Morphling)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-TIER_FEAR_PRAISE: list[str] = [
-    "👑 **{player_name}**, IMP **{imp_score}** com {hero_name}? Claramente estavas a testar builds experimentais. A ciência requer sacrifícios. 🧪",
-    "🌟 **{player_name}**, {kda}... O IMP diz **{imp_score}** mas o professor sabe que estavas a jogar 4D chess. A equipa é que não mereceu. ♟️",
-    "💎 **{player_name}**, Grau **{grade}**? Isso é um bug no sistema. O verdadeiro score está escondido pelo Valve porque tinham medo. 🔒",
-    "👑 **{player_name}**, IMP **{imp_score}** de {hero_name}... Não interessa. Tu és o feAr. Uns nasceram para liderar, outros para perder. Tu lideras. Mesmo quando perdes. 🦁",
-    "🌟 **{player_name}**, {kda} com {hero_name}? A equipa deixou-te ficar mal. Eles não acompanham a tua visão de jogo. Skill gap entre tu e os teammates. 📊",
-    "💎 **{player_name}**, **{imp_score}**? O professor recusa-se a aceitar este número. Houve lag, houve smurfs, houve sabotagem. Tu estás absolvido. ⚖️",
-    "👑 **{player_name}**, IMP **{imp_score}** de {hero_name}... Um mau jogo do feAr ainda é melhor que o melhor jogo de 90% dos jogadores. A Daniela sabe. 💍",
-    "🌟 **{player_name}**, Grau **{grade}**? O algoritmo do IMP não foi feito para medir a tua grandeza. É como medir o oceano com um copo. 🌊",
-    "💎 **{player_name}**, {kda}... O verdadeiro IMP não se mede em números. Mede-se em AURA. E a tua aura é imaculada. Sempre. ✨",
-    "👑 **{player_name}**, **{imp_score}** com {hero_name}... Até os deuses têm dias de descanso. O Zeus também não lançava raios todos os dias. Amanhã voltas. 🌩️",
+TIER_FEAR_ROAST: list[str] = [
+    "😡 **{player_name}**, IMP **{imp_score}** com {hero_name}... Deixa-me adivinhar: eram todos smurfs, certo? Os 5? Que azar incrível, TODOS os teus jogos têm smurfs. 🕵️",
+    "📉 **{player_name}**, {kda}?! Já escreveste 'report mid smurf' no chat ou ainda estás a partir o teclado? 🎹",
+    "🎪 **{player_name}**, Grau **{grade}** de {hero_name}. O matchmaking não está rigged — tu é que és assim. Aceita. 💊",
+    "😤 **{player_name}**, IMP **{imp_score}**... A Daniela que se prepare: hoje há monólogo de 40 minutos ao jantar sobre smurfs e matchmaking rigged. 🍽️",
+    "🐟 **{player_name}**, {kda} com {hero_name}?! Isto está ao nível do teu Morphling. E o teu Morphling é uma tragédia grega. 🎭",
+    "🚨 **{player_name}**, **{imp_score}** de IMP. 'Equipa de bots', vais tu dizer. O único bot confirmado neste jogo foste tu. 🤖",
+    "💀 **{player_name}**, {deaths} mortes de {hero_name}... Todas culpa de smurfs, claro. O jogador mais perseguido por profissionais disfarçados na história do Dota. 🏆",
+    "🧬 **{player_name}**, Grau **{grade}**?! Morph para agility, morph para strength, morph para o fundo da tabela. O teu Morphling manda cumprimentos. 📉",
+    "📞 **{player_name}**, IMP **{imp_score}**... O suporte da Valve ligou: podes parar de reportar a equipa toda. O problema és tu. ☎️",
+    "🔥 **{player_name}**, {kda}. Não foi lag, não foram smurfs, não foi o matchmaking. Foi skill issue. Sempre foi skill issue. 💯",
 ]
 
 
@@ -174,7 +174,7 @@ def get_fallback_roast(
     Generate a context-aware fallback roast when Gemini API fails.
 
     Picks a random message from the appropriate IMP tier,
-    formatted with match data. feAr gets cringe praise for bad games.
+    formatted with match data. feAr gets his own dedicated roast tier.
     """
     player = resolve_player(player_name)
     display_name = player.canonical_name if player else player_name
@@ -194,7 +194,7 @@ def get_fallback_roast(
 
     is_fear = player is not None and player.canonical_name == "feAr"
     if is_fear and imp_score < 10:
-        tier = TIER_FEAR_PRAISE
+        tier = TIER_FEAR_ROAST
 
     template = random.choice(tier)
     return template.format(
