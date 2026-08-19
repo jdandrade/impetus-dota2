@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://raider.io/api/v1"
 
 # Current M+ season identifier
-CURRENT_SEASON = "season-mn-1"
+CURRENT_SEASON = "season-mn-2"
 
 
 @dataclass
