@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class ViewMatchButton(ui.View):
-    """View with a button to open the match on our frontend."""
-    
-    def __init__(self, match_id: int, frontend_url: str):
+    """View with a button to open the match on Stratz."""
+
+    def __init__(self, match_id: int):
         super().__init__(timeout=None)
-        
+
         # Add the button as a link
-        match_url = f"{frontend_url}/match/{match_id}"
+        match_url = f"https://stratz.com/matches/{match_id}"
         self.add_item(ui.Button(
             label="🔍 View Full Match",
             url=match_url,
@@ -181,7 +181,7 @@ class ProfessorBot(discord.Client):
                 roast=roast,
             )
             
-            view = ViewMatchButton(match_id, self.frontend_url)
+            view = ViewMatchButton(match_id)
             
             await self._channel.send(embed=embed, view=view)
             logger.info(f"Sent match announcement for {player_name} (match {match_id})")
