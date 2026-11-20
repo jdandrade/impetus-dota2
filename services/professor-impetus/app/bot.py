@@ -3,11 +3,12 @@ Discord Bot Setup.
 Handles Discord client, events, and message views.
 """
 
+import io
 import logging
 from typing import Optional
 
 import discord
-from discord import ui
+from discord import app_commands, ui
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,47 @@ def build_match_embed(
     return embed
 
 
+GSI_CONFIG_FILENAME = "gamestate_integration_impetus.cfg"
+
+LIVE_SETUP_INSTRUCTIONS = """**Live Dota 2 tracking for {player}**
+
+This uses Valve's built-in Game State Integration. Nothing gets installed: the attached file is plain text you can open and read. It tells your Dota client to send your own in-game state (hero, K/D/A, gold, items, abilities, game clock, result, plus game events such as tips and chat lines, which the bot ignores) to the Impetus bot while you play.
+
+**1.** Save the attached `{filename}` into this folder (create `gamestate_integration` if it does not exist):
+Windows: `Steam\\steamapps\\common\\dota 2 beta\\game\\dota\\cfg\\gamestate_integration\\`
+macOS: `~/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/dota/cfg/gamestate_integration/`
+**2.** In Steam: right-click Dota 2 → Properties → Launch Options → add `-gamestateintegration`
+**3.** Restart Dota 2.
+
+The file contains your personal token, so do not share it. Running this command again gives you a new file and disables the old one. To stop, delete the file."""
+
+
+def build_gsi_config(uri: str, token: str) -> str:
+    """Build the Dota 2 Game State Integration cfg file for one player."""
+    return f'''"Impetus"
+{{
+    "uri"       "{uri}"
+    "timeout"   "5.0"
+    "buffer"    "0.5"
+    "throttle"  "2.0"
+    "heartbeat" "30.0"
+    "data"
+    {{
+        "map"       "1"
+        "player"    "1"
+        "hero"      "1"
+        "items"     "1"
+        "abilities" "1"
+        "events"    "1"
+    }}
+    "auth"
+    {{
+        "token" "{token}"
+    }}
+}}
+'''
+
+
 class ProfessorBot(discord.Client):
     """Discord client for Professor Impetus."""
     
@@ -134,6 +176,74 @@ class ProfessorBot(discord.Client):
         self.channel_id = channel_id
         self.frontend_url = frontend_url
         self._channel: Optional[discord.TextChannel] = None
+        
+        self.tree = app_commands.CommandTree(self)
+        self._commands_synced = False
+        self._gsi_redis = None
+        self._gsi_public_url = ""
+    
+    def enable_live_setup(self, redis_store, public_url: str, players: dict[str, str]) -> None:
+        """
+        Register the /dota-live-setup slash command.
+        
+        Args:
+            redis_store: RedisStore used to issue GSI tokens
+            public_url: Public base URL of the GSI endpoint ("" if unknown)
+            players: Steam ID 64 -> display name of the tracked players
+        """
+        self._gsi_redis = redis_store
+        self._gsi_public_url = public_url
+        
+        choices = [
+            app_commands.Choice(name=name, value=steam_id)
+            for steam_id, name in players.items()
+        ]
+        
+        @self.tree.command(
+            name="dota-live-setup",
+            description="Get your personal config file for live Dota 2 tracking",
+        )
+        @app_commands.describe(player="Which tracked player you are")
+        @app_commands.choices(player=choices)
+        @app_commands.guild_only()
+        async def dota_live_setup(
+            interaction: discord.Interaction,
+            player: app_commands.Choice[str],
+        ):
+            await self._handle_live_setup(interaction, player.value, player.name)
+    
+    async def _handle_live_setup(
+        self,
+        interaction: discord.Interaction,
+        steam_id: str,
+        player_name: str,
+    ) -> None:
+        """Issue a fresh GSI token and send the cfg file, visible only to the caller."""
+        if not self._gsi_public_url:
+            await interaction.response.send_message(
+                "Live tracking is not set up yet: the bot has no public URL "
+                "(set `GSI_PUBLIC_URL` or generate a Railway domain).",
+                ephemeral=True,
+            )
+            return
+        
+        try:
+            token = await self._gsi_redis.create_gsi_token(steam_id)
+        except Exception as e:
+            logger.error(f"Could not create GSI token for {player_name}: {e}")
+            await interaction.response.send_message(
+                "Could not create your token right now, try again in a minute.",
+                ephemeral=True,
+            )
+            return
+        
+        logger.info(f"Issued GSI token for {player_name} to Discord user {interaction.user.id}")
+        cfg = build_gsi_config(f"{self._gsi_public_url}/gsi", token)
+        await interaction.response.send_message(
+            LIVE_SETUP_INSTRUCTIONS.format(player=player_name, filename=GSI_CONFIG_FILENAME),
+            file=discord.File(io.BytesIO(cfg.encode("utf-8")), filename=GSI_CONFIG_FILENAME),
+            ephemeral=True,
+        )
     
     async def on_ready(self):
         """Called when bot is connected and ready."""
@@ -143,6 +253,67 @@ class ProfessorBot(discord.Client):
             logger.info(f"Connected to channel: {self._channel.name}")
         else:
             logger.warning(f"Could not find channel {self.channel_id}")
+        
+        await self._sync_commands()
+    
+    async def _sync_commands(self) -> None:
+        """Publish slash commands to the announcement channel's server (once)."""
+        if self._commands_synced or self._gsi_redis is None or not self._channel:
+            return
+        try:
+            guild = self._channel.guild
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            self._commands_synced = True
+            logger.info(f"Slash commands synced to server: {guild.name}")
+        except Exception as e:
+            logger.warning(
+                f"Could not sync slash commands ({e}). The bot may need to be "
+                f"re-invited with the applications.commands scope."
+            )
+    
+    async def send_embed(self, embed: discord.Embed) -> Optional[int]:
+        """
+        Send an embed to the configured channel.
+        
+        Returns:
+            The new message's ID (so it can be edited later), or None on failure
+        """
+        if not self._channel:
+            self._channel = self.get_channel(self.channel_id)
+        
+        if not self._channel:
+            logger.error(f"Channel {self.channel_id} not found")
+            return None
+        
+        try:
+            message = await self._channel.send(
+                embed=embed, allowed_mentions=discord.AllowedMentions.none()
+            )
+            return message.id
+        except Exception as e:
+            logger.exception(f"Error sending embed: {e}")
+            return None
+    
+    async def edit_embed(self, message_id: int, embed: discord.Embed) -> bool:
+        """
+        Replace the embed of a message this bot sent earlier.
+        
+        Returns:
+            True if edited successfully
+        """
+        if not self._channel:
+            self._channel = self.get_channel(self.channel_id)
+        
+        if not self._channel:
+            return False
+        
+        try:
+            await self._channel.get_partial_message(message_id).edit(embed=embed)
+            return True
+        except Exception as e:
+            logger.warning(f"Could not edit message {message_id}: {e}")
+            return False
     
     async def send_match_announcement(
         self,
