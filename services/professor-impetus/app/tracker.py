@@ -6,10 +6,17 @@ Main polling loop that detects new matches and triggers announcements.
 import asyncio
 import logging
 import time
+from typing import Optional
 
 from app.config import TRACKED_PLAYERS, convert_steam_id64_to_account_id, Settings, get_poll_interval
 from app.bot import ProfessorBot
-from app.services.opendota import get_latest_match_with_fallback, request_match_parse, MatchData
+from app.services.opendota import (
+    get_latest_match_with_fallback,
+    get_match_data,
+    request_match_parse,
+    MatchData,
+)
+from app.services import steam_api
 from app.services.imp_engine import calculate_imp, IMPResult
 from app.services.gemini import GeminiClient
 from app.services.redis_store import RedisStore
@@ -18,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 # Matches that ended longer ago than this are recorded but not announced
 MAX_ANNOUNCE_AGE_SECONDS = 24 * 60 * 60
+# How many polls to wait for the details of a detected match before giving up
+MAX_DETAIL_ATTEMPTS = 30
 
 
 class MatchTracker:
@@ -40,6 +49,10 @@ class MatchTracker:
         # Match IDs handled by this process, per player. Second line of
         # defence so one process can never post the same match twice.
         self._announced: dict[str, set[int]] = {}
+        # When each player was last checked through OpenDota (monotonic)
+        self._last_opendota_poll: dict[str, float] = {}
+        # Failed detail fetches per detected match ID
+        self._detail_attempts: dict[int, int] = {}
     
     async def start(self) -> None:
         """Start the match tracking loop."""
@@ -97,8 +110,15 @@ class MatchTracker:
         """
         account_id = convert_steam_id64_to_account_id(steam_id)
         
-        # Fetch latest match from OpenDota
-        match = await get_latest_match_with_fallback(account_id, fallback_name)
+        # Read dedup state first: it lets us skip the expensive match
+        # details call when nothing is new. If Redis is down, do nothing.
+        try:
+            seen = await self.redis.get_seen_match_ids(steam_id)
+        except Exception as e:
+            logger.error(f"Redis unavailable while checking {fallback_name}, skipping: {e}")
+            return
+        
+        match = await self._fetch_new_match(steam_id, account_id, fallback_name, seen)
         if not match:
             return
         
@@ -142,6 +162,101 @@ class MatchTracker:
             grade=imp_result.grade,
             roast=roast,
         )
+    
+    async def _fetch_new_match(
+        self,
+        steam_id: str,
+        account_id: int,
+        fallback_name: str,
+        seen: set[int],
+    ) -> Optional[MatchData]:
+        """
+        Return the player's latest match if it looks new, else None.
+        
+        With a Steam API key: Steam detects the match ID (cheap, polled
+        often); details come from Steam, falling back to OpenDota.
+        Without a key, or when Steam cannot answer for this player: the
+        OpenDota -> Stratz path, at most once per OpenDota poll interval.
+        """
+        api_key = self.settings.steam_api_key
+        
+        if api_key:
+            latest_id = await steam_api.get_latest_match_id(api_key, account_id)
+            
+            if latest_id is not None:
+                if not await self._is_candidate(steam_id, fallback_name, latest_id, seen):
+                    return None
+                
+                match = await steam_api.get_match_data(api_key, latest_id, account_id, fallback_name)
+                if not match:
+                    match = await get_match_data(latest_id, account_id, fallback_name)
+                if not match:
+                    await self._note_missing_details(steam_id, fallback_name, latest_id)
+                return match
+            
+            # Steam could not answer. OpenDota cannot be polled at the Steam
+            # cadence, so only fall back once per OpenDota poll interval.
+            last = self._last_opendota_poll.get(steam_id, 0.0)
+            if time.monotonic() - last < self.settings.poll_interval_seconds:
+                return None
+        
+        self._last_opendota_poll[steam_id] = time.monotonic()
+        return await get_latest_match_with_fallback(account_id, fallback_name, seen)
+    
+    async def _note_missing_details(self, steam_id: str, fallback_name: str, match_id: int) -> None:
+        """
+        Count a failed details fetch for a detected match. After
+        MAX_DETAIL_ATTEMPTS, record the match as seen and give up, so an
+        unresolvable match cannot burn API calls on every poll forever.
+        """
+        attempts = self._detail_attempts.get(match_id, 0) + 1
+        self._detail_attempts[match_id] = attempts
+        
+        if attempts < MAX_DETAIL_ATTEMPTS:
+            if attempts == 1:
+                logger.warning(
+                    f"Match {match_id} detected for {fallback_name} but details "
+                    f"are not available yet, retrying on next polls"
+                )
+            return
+        
+        try:
+            await self.redis.claim_match(steam_id, match_id)
+        except Exception as e:
+            logger.error(f"Redis unavailable while giving up on match {match_id}: {e}")
+            return
+        self._detail_attempts.pop(match_id, None)
+        logger.error(
+            f"Giving up on match {match_id} for {fallback_name}: no details "
+            f"after {attempts} attempts (not announced)"
+        )
+    
+    async def _is_candidate(
+        self,
+        steam_id: str,
+        fallback_name: str,
+        match_id: int,
+        seen: set[int],
+    ) -> bool:
+        """
+        Cheap pre-check on a match ID, before fetching match details.
+        Seeds a player with no stored state silently.
+        """
+        if match_id in seen or match_id in self._announced.get(steam_id, set()):
+            return False
+        
+        if not seen:
+            try:
+                await self.redis.claim_match(steam_id, match_id)
+            except Exception as e:
+                logger.error(f"Redis unavailable while seeding {fallback_name}: {e}")
+                return False
+            self._announced.setdefault(steam_id, set()).add(match_id)
+            logger.info(f"No stored state for {fallback_name}, seeding with match {match_id} (not announced)")
+            return False
+        
+        # Older than something already seen: a stale API response
+        return match_id > max(seen)
     
     async def _should_announce(self, steam_id: str, fallback_name: str, match: MatchData) -> bool:
         """
