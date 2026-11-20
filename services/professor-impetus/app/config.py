@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     # Max live roasts per player per game (they all go into one live post)
     gsi_max_moments: int = Field(default=12, env="GSI_MAX_MOMENTS")
     
+    # Post-game smurf check: flag enemies with fewer lifetime games than this
+    smurf_check_enabled: bool = Field(default=True, env="SMURF_CHECK_ENABLED")
+    smurf_max_games: int = Field(default=200, env="SMURF_MAX_GAMES")
+    
     # Stratz API (fallback when OpenDota is rate limited)
     stratz_api_token: str = Field(default="", env="STRATZ_API_TOKEN")
     

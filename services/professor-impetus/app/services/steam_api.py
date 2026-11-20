@@ -175,6 +175,10 @@ async def get_match_players(
             net_worth=p.get("net_worth", 0),
             lane=None,  # Not provided by the Steam API
             is_radiant=p.get("player_slot", 0) < 128,
+            account_id=p.get("account_id"),
+            kills=p.get("kills", 0),
+            deaths=p.get("deaths", 0),
+            assists=p.get("assists", 0),
         )
         for p in players
     ]
