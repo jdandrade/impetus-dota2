@@ -108,7 +108,8 @@ class MatchData:
     player_name: str
     lane: Optional[int] = None  # 1=safelane, 2=mid, 3=offlane
     all_players: Optional[list] = None  # List of PlayerMinimal for role detection
-    
+    start_time: Optional[int] = None  # Unix timestamp of match start, if known
+
     @property
     def is_victory(self) -> bool:
         """Check if player won the match."""
@@ -387,6 +388,7 @@ async def get_latest_match(account_id: int, fallback_name: str = "Unknown") -> O
                 player_name=player_name,
                 lane=player_stats.get("lane"),  # Add lane data
                 all_players=all_players,  # Add all players for role detection
+                start_time=match_data.get("start_time"),
             )
             
         except Exception as e:
@@ -521,6 +523,7 @@ async def get_latest_match_with_fallback(
             player_name=stratz_match.player_name,
             lane=stratz_match.lane,
             all_players=stratz_match.all_players,
+            start_time=stratz_match.start_time,
         )
     except Exception as e:
         logger.exception(f"[Fallback] Stratz fallback failed: {e}")

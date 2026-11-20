@@ -41,6 +41,7 @@ class StratzMatchData:
     player_name: str
     lane: Optional[int] = None
     all_players: Optional[list] = None
+    start_time: Optional[int] = None
 
 
 # Hero ID to name mapping (same as opendota.py)
@@ -143,6 +144,7 @@ class StratzProvider:
                     id
                     didRadiantWin
                     durationSeconds
+                    startDateTime
                     players(steamAccountId: $steamAccountId) {
                         heroId
                         kills
@@ -230,6 +232,7 @@ class StratzProvider:
             # Ensure lane is int or None (safeguard against string enums)
             lane=player_data.get("lane") if isinstance(player_data.get("lane"), int) else None,
             all_players=None,  # Not fetching all players for now
+            start_time=match.get("startDateTime"),
         )
 
     async def get_recent_matches(

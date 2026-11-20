@@ -5,6 +5,7 @@ Main polling loop that detects new matches and triggers announcements.
 
 import asyncio
 import logging
+import time
 
 from app.config import TRACKED_PLAYERS, convert_steam_id64_to_account_id, Settings, get_poll_interval
 from app.bot import ProfessorBot
@@ -14,6 +15,9 @@ from app.services.gemini import GeminiClient
 from app.services.redis_store import RedisStore
 
 logger = logging.getLogger(__name__)
+
+# Matches that ended longer ago than this are recorded but not announced
+MAX_ANNOUNCE_AGE_SECONDS = 24 * 60 * 60
 
 
 class MatchTracker:
@@ -33,6 +37,9 @@ class MatchTracker:
         self.gemini = gemini_client
         self.settings = settings
         self._running = False
+        # Match IDs handled by this process, per player. Second line of
+        # defence so one process can never post the same match twice.
+        self._announced: dict[str, set[int]] = {}
     
     async def start(self) -> None:
         """Start the match tracking loop."""
@@ -41,10 +48,7 @@ class MatchTracker:
         
         # Wait for bot to be ready
         await self.bot.wait_until_ready()
-        logger.info("Bot is ready, initializing player tracking...")
-        
-        # Initialize tracking state
-        await self._initialize_players()
+        logger.info("Bot is ready, starting match polling...")
         
         # Start polling loop - staggered polling across interval means no extra sleep needed
         while self._running and not self.bot.is_closed():
@@ -54,70 +58,6 @@ class MatchTracker:
         """Stop the match tracking loop."""
         self._running = False
         logger.info("Stopping match tracker...")
-    
-    async def _initialize_players(self) -> None:
-        """
-        Initialize tracking by fetching current matches for all players.
-        On FIRST RUN: Announces current match for each player (for testing).
-        On subsequent runs: Silently initializes without announcing.
-        """
-        for steam_id, fallback_name in TRACKED_PLAYERS.items():
-            account_id = convert_steam_id64_to_account_id(steam_id)
-            
-            # Check if already initialized in Redis
-            last_match = await self.redis.get_last_match_id(steam_id)
-            if last_match:
-                logger.info(f"Player {fallback_name} already tracked (last match: {last_match})")
-                continue
-            
-            # First run - fetch and ANNOUNCE current match
-            match = await get_latest_match_with_fallback(account_id, fallback_name)
-            if match:
-                logger.info(f"🆕 First run: Announcing current match for {fallback_name} ({match.match_id})")
-                
-                # Request parse for better data quality (fire and forget)
-                asyncio.create_task(request_match_parse(match.match_id))
-                
-                # Calculate IMP score
-                imp_result = await calculate_imp(match, self.settings.imp_engine_url)
-                if not imp_result:
-                    logger.error(f"Failed to get IMP score for {fallback_name}")
-                    imp_result = IMPResult(
-                        imp_score=0.0,
-                        grade="C",
-                        percentile=50,
-                        summary="Score unavailable",
-                    )
-                
-                # Generate roast - use group nickname for proper recognition
-                player_name = fallback_name
-                roast = await self.gemini.generate_roast(
-                    player_name=player_name,
-                    match=match,
-                    imp_result=imp_result,
-                )
-                
-                # Send Discord announcement
-                await self.bot.send_match_announcement(
-                    player_name=player_name,
-                    match_id=match.match_id,
-                    hero_name=match.hero_name,
-                    is_victory=match.is_victory,
-                    kda=match.kda_string,
-                    duration=match.duration_string,
-                    imp_score=imp_result.imp_score,
-                    grade=imp_result.grade,
-                    roast=roast,
-                )
-                
-                # Store as processed
-                await self.redis.set_last_match_id(steam_id, match.match_id)
-                logger.info(f"✅ Announced and initialized {fallback_name} with match {match.match_id}")
-            else:
-                logger.warning(f"Could not initialize {fallback_name} (no match data)")
-            
-            # Rate limit OpenDota calls (2 seconds for safety)
-            await asyncio.sleep(2)
     
     async def _poll_matches(self) -> None:
         """
@@ -162,18 +102,13 @@ class MatchTracker:
         if not match:
             return
         
-        # Check if this is a new match
-        last_match = await self.redis.get_last_match_id(steam_id)
-        if last_match and match.match_id == last_match:
-            return  # Already processed
+        if not await self._should_announce(steam_id, fallback_name, match):
+            return
         
         logger.info(f"New match detected for {match.player_name or fallback_name}: {match.match_id}")
         
         # Request parse for better data quality (fire and forget)
         asyncio.create_task(request_match_parse(match.match_id))
-        
-        # Immediately mark as processed to prevent duplicates
-        await self.redis.set_last_match_id(steam_id, match.match_id)
         
         # Calculate IMP score using our internal API
         imp_result = await calculate_imp(match, self.settings.imp_engine_url)
@@ -207,3 +142,68 @@ class MatchTracker:
             grade=imp_result.grade,
             roast=roast,
         )
+    
+    async def _should_announce(self, steam_id: str, fallback_name: str, match: MatchData) -> bool:
+        """
+        Decide whether a fetched match is new and claim it if so.
+        
+        A match is announced only when ALL of these hold:
+        - this process has not announced it already (in-memory guard)
+        - Redis state could be read (on any Redis error we skip, never repost)
+        - it is not among the player's recently seen match IDs
+        - it is newer than every seen match (the APIs sometimes return an
+          older game as "latest", e.g. when OpenDota and Stratz disagree)
+        - it is recent enough to be worth announcing
+        - we won the atomic claim in Redis
+        
+        A player with no stored state is seeded silently.
+        """
+        match_id = match.match_id
+        if not match_id:
+            return False
+        
+        local_seen = self._announced.setdefault(steam_id, set())
+        if match_id in local_seen:
+            return False
+        
+        try:
+            seen = await self.redis.get_seen_match_ids(steam_id)
+            
+            if match_id in seen:
+                return False
+            
+            is_stale = bool(seen) and match_id < max(seen)
+            claimed = await self.redis.claim_match(steam_id, match_id)
+        except Exception as e:
+            logger.error(
+                f"Redis unavailable while checking {fallback_name} "
+                f"(match {match_id}), skipping announcement: {e}"
+            )
+            return False
+        
+        if not claimed:
+            return False
+        
+        local_seen.add(match_id)
+        
+        if not seen:
+            logger.info(f"No stored state for {fallback_name}, seeding with match {match_id} (not announced)")
+            return False
+        
+        if is_stale:
+            logger.warning(
+                f"Ignoring match {match_id} for {fallback_name}: older than "
+                f"already seen match {max(seen)} (stale API response)"
+            )
+            return False
+        
+        if match.start_time:
+            age = time.time() - (match.start_time + match.duration_seconds)
+            if age > MAX_ANNOUNCE_AGE_SECONDS:
+                logger.warning(
+                    f"Ignoring match {match_id} for {fallback_name}: "
+                    f"ended {age / 3600:.1f}h ago"
+                )
+                return False
+        
+        return True
