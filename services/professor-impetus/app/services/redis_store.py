@@ -3,7 +3,9 @@ Redis State Store.
 Tracks processed matches and posted videos to prevent duplicates.
 """
 
+import hashlib
 import logging
+import secrets
 from typing import Optional
 
 import redis.asyncio as redis
@@ -107,6 +109,41 @@ class RedisStore:
         # makes an inactive player's old match look new again.
         await client.zremrangebyrank(key, 0, -(SEEN_MATCHES_KEPT + 1))
         return bool(added)
+
+    # GSI (live game tracking)
+    #
+    # Only a SHA-256 of each token is stored, so reading Redis does not
+    # reveal usable tokens. These raise on Redis failure, like the match
+    # methods above.
+
+    @staticmethod
+    def _token_hash(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    async def create_gsi_token(self, steam_id: str) -> str:
+        """Create a GSI token for a player, revoking their previous one."""
+        client = self._require_client()
+        player_key = f"gsi:player:{steam_id}:token_hash"
+
+        old_hash = await client.get(player_key)
+        if old_hash:
+            await client.delete(f"gsi:token:{old_hash}")
+
+        token = secrets.token_urlsafe(24)
+        token_hash = self._token_hash(token)
+        await client.set(f"gsi:token:{token_hash}", steam_id)
+        await client.set(player_key, token_hash)
+        return token
+
+    async def get_gsi_player(self, token: str) -> Optional[str]:
+        """Return the Steam ID 64 a GSI token belongs to, or None."""
+        client = self._require_client()
+        return await client.get(f"gsi:token:{self._token_hash(token)}")
+
+    async def claim_once(self, key: str, ttl_seconds: int = 60 * 60 * 24) -> bool:
+        """Atomically claim a one-off event. True only for the first caller."""
+        client = self._require_client()
+        return bool(await client.set(key, "1", nx=True, ex=ttl_seconds))
 
     # YouTube video deduplication methods
     

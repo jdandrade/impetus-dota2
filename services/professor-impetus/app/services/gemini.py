@@ -3,6 +3,7 @@ Gemini API Client.
 Generates roast messages and triages YouTube videos using Google Gemini Flash.
 """
 
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -106,6 +107,43 @@ class GeminiClient:
         except Exception as e:
             logger.exception(f"Error generating roast for {player_name}: {e}")
             return get_fallback_roast(player_name, match, imp_result)
+    
+    async def generate_live_comment(
+        self,
+        player_name: str,
+        hero_name: str,
+        clock: str,
+        situation: str,
+    ) -> Optional[str]:
+        """
+        Generate a one-line roast for something happening in a game that is
+        still in progress. Returns None on failure (caller falls back).
+        """
+        prompt = (
+            "MOMENTO AO VIVO (o jogo ainda está a decorrer, ainda não há resultado nem nota).\n"
+            f"Jogador: {player_name}\n"
+            f"Herói: {hero_name}\n"
+            f"Minuto: {clock}\n"
+            f"O que aconteceu: {player_name} {situation}.\n\n"
+            "Escreve UMA única frase curta (máximo 25 palavras) a reagir a este momento, "
+            "no teu estilo habitual. Não inventes o resultado do jogo. Sem introduções."
+        )
+        try:
+            # The SDK call is blocking; keep it off the event loop so GSI
+            # updates and Discord heartbeats are not held up.
+            response = await asyncio.to_thread(
+                self.roast_model.generate_content,
+                prompt,
+                generation_config=genai.GenerationConfig(
+                    max_output_tokens=800,
+                    temperature=0.9,
+                ),
+            )
+            comment = response.text.strip()
+            return comment or None
+        except Exception as e:
+            logger.error(f"Error generating live comment for {player_name}: {e}")
+            return None
     
     async def triage_videos(self, videos: list, max_retries: int = 2) -> list[str]:
         """

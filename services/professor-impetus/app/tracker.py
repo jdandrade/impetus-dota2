@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 MAX_ANNOUNCE_AGE_SECONDS = 24 * 60 * 60
 # How many polls to wait for the details of a detected match before giving up
 MAX_DETAIL_ATTEMPTS = 30
+# Fast track (match end reported live): how long to wait for match details
+FAST_TRACK_ATTEMPTS = 20
+FAST_TRACK_RETRY_SECONDS = 15
 
 
 class MatchTracker:
@@ -127,6 +130,10 @@ class MatchTracker:
         
         logger.info(f"New match detected for {match.player_name or fallback_name}: {match.match_id}")
         
+        await self._announce(fallback_name, match)
+    
+    async def _announce(self, fallback_name: str, match: MatchData) -> None:
+        """Score a match, generate the roast and post the report card."""
         # Request parse for better data quality (fire and forget)
         asyncio.create_task(request_match_parse(match.match_id))
         
@@ -162,6 +169,62 @@ class MatchTracker:
             grade=imp_result.grade,
             roast=roast,
         )
+    
+    async def process_finished_match(self, match_id: int, steam_id: str) -> bool:
+        """
+        Fast track for a match we KNOW just ended (reported live by a
+        player's game client): wait for its details to become available and
+        post the report card for that player and for every other tracked
+        player in the same match.
+        
+        Uses the same dedup claims as the poller, so whichever gets to a
+        match first announces it and the other skips it.
+        
+        Args:
+            match_id: The finished match
+            steam_id: Steam ID 64 of the player whose client reported it
+        
+        Returns:
+            True if the reporting player's match was resolved (announced now
+            or already handled), False if details never became available.
+        """
+        accounts = {
+            convert_steam_id64_to_account_id(sid): (sid, name)
+            for sid, name in TRACKED_PLAYERS.items()
+        }
+        reporter_account = convert_steam_id64_to_account_id(steam_id)
+        reporter_name = TRACKED_PLAYERS.get(steam_id, "Unknown")
+        api_key = self.settings.steam_api_key
+        
+        found: dict[int, MatchData] = {}
+        for attempt in range(FAST_TRACK_ATTEMPTS):
+            if attempt:
+                await asyncio.sleep(FAST_TRACK_RETRY_SECONDS)
+            
+            if api_key:
+                found = await steam_api.get_match_players(
+                    api_key, match_id, {acc: name for acc, (_, name) in accounts.items()}
+                )
+            if reporter_account not in found:
+                match = await get_match_data(match_id, reporter_account, reporter_name)
+                if match:
+                    found[reporter_account] = match
+            if reporter_account in found:
+                break
+        else:
+            logger.warning(
+                f"Fast track: no details for match {match_id} after "
+                f"{FAST_TRACK_ATTEMPTS} attempts, leaving it to the poller"
+            )
+            return False
+        
+        for account_id, match in found.items():
+            sid, name = accounts[account_id]
+            if await self._should_announce(sid, name, match):
+                logger.info(f"Fast track: announcing match {match_id} for {name}")
+                await self._announce(name, match)
+        
+        return True
     
     async def _fetch_new_match(
         self,

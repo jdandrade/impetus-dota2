@@ -134,19 +134,40 @@ async def get_match_data(
     Returns None if the match is not available yet or the player cannot be
     found in it (e.g. shown as anonymous).
     """
+    found = await get_match_players(api_key, match_id, {account_id: player_name})
+    match = found.get(account_id)
+    if match is None:
+        logger.info(f"[Steam] GetMatchDetails {match_id}: no usable data for account {account_id}")
+    return match
+
+
+async def get_match_players(
+    api_key: str,
+    match_id: int,
+    accounts: dict[int, str],
+) -> dict[int, MatchData]:
+    """
+    Get stats for every given account that played in a match, with a single
+    GetMatchDetails call.
+
+    Args:
+        accounts: account ID -> display name of the players to look for
+
+    Returns:
+        account ID -> MatchData for those found. Empty if the match is not
+        available yet.
+    """
     result = await _get("GetMatchDetails", api_key, {"match_id": match_id})
     if result is None:
-        return None
+        return {}
 
     if result.get("error"):
         logger.info(f"[Steam] GetMatchDetails {match_id}: {result['error']}")
-        return None
+        return {}
 
     players = result.get("players") or []
-    stats = next((p for p in players if p.get("account_id") == account_id), None)
-    if stats is None or not result.get("duration"):
-        logger.info(f"[Steam] GetMatchDetails {match_id}: no usable data for account {account_id}")
-        return None
+    if not result.get("duration"):
+        return {}
 
     all_players = [
         PlayerMinimal(
@@ -158,31 +179,38 @@ async def get_match_data(
         for p in players
     ]
 
-    hero_id = stats.get("hero_id", 0)
-    player_slot = stats.get("player_slot", 0)
+    found: dict[int, MatchData] = {}
+    for stats in players:
+        account_id = stats.get("account_id")
+        if account_id not in accounts:
+            continue
 
-    return MatchData(
-        match_id=match_id,
-        hero_id=hero_id,
-        hero_name=HERO_NAMES.get(hero_id, f"Hero #{hero_id}"),
-        kills=stats.get("kills", 0),
-        deaths=stats.get("deaths", 0),
-        assists=stats.get("assists", 0),
-        gpm=stats.get("gold_per_min", 0),
-        xpm=stats.get("xp_per_min", 0),
-        net_worth=stats.get("net_worth", 0),
-        level=stats.get("level", 1),
-        hero_damage=stats.get("hero_damage", 0),
-        tower_damage=stats.get("tower_damage", 0),
-        hero_healing=stats.get("hero_healing", 0),
-        last_hits=stats.get("last_hits", 0),
-        denies=stats.get("denies", 0),
-        duration_seconds=result.get("duration", 0),
-        is_radiant=player_slot < 128,
-        radiant_win=bool(result.get("radiant_win", False)),
-        player_slot=player_slot,
-        player_name=player_name,
-        lane=None,
-        all_players=all_players,
-        start_time=result.get("start_time"),
-    )
+        hero_id = stats.get("hero_id", 0)
+        player_slot = stats.get("player_slot", 0)
+        found[account_id] = MatchData(
+            match_id=match_id,
+            hero_id=hero_id,
+            hero_name=HERO_NAMES.get(hero_id, f"Hero #{hero_id}"),
+            kills=stats.get("kills", 0),
+            deaths=stats.get("deaths", 0),
+            assists=stats.get("assists", 0),
+            gpm=stats.get("gold_per_min", 0),
+            xpm=stats.get("xp_per_min", 0),
+            net_worth=stats.get("net_worth", 0),
+            level=stats.get("level", 1),
+            hero_damage=stats.get("hero_damage", 0),
+            tower_damage=stats.get("tower_damage", 0),
+            hero_healing=stats.get("hero_healing", 0),
+            last_hits=stats.get("last_hits", 0),
+            denies=stats.get("denies", 0),
+            duration_seconds=result.get("duration", 0),
+            is_radiant=player_slot < 128,
+            radiant_win=bool(result.get("radiant_win", False)),
+            player_slot=player_slot,
+            player_name=accounts[account_id],
+            lane=None,
+            all_players=all_players,
+            start_time=result.get("start_time"),
+        )
+
+    return found

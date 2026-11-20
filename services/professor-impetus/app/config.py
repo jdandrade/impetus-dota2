@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     # ~100k calls/day, so this can be far shorter than poll_interval_seconds.
     steam_poll_interval_seconds: int = Field(default=60, env="STEAM_POLL_INTERVAL_SECONDS")
     
+    # Live tracking via Dota 2 Game State Integration (opt-in per player)
+    gsi_enabled: bool = Field(default=True, env="GSI_ENABLED")
+    # Port for the GSI HTTP endpoint (Railway sets PORT)
+    port: int = Field(default=8080, env="PORT")
+    # Public base URL players' game clients post to, e.g.
+    # https://my-bot.up.railway.app. Defaults to Railway's public domain.
+    gsi_public_url: str = Field(default="", env="GSI_PUBLIC_URL")
+    # Max live "moment" roasts per player per game
+    gsi_max_moments: int = Field(default=3, env="GSI_MAX_MOMENTS")
+    
     # Stratz API (fallback when OpenDota is rate limited)
     stratz_api_token: str = Field(default="", env="STRATZ_API_TOKEN")
     
@@ -108,6 +118,15 @@ def get_poll_interval(settings: "Settings") -> int:
         return min(settings.steam_poll_interval_seconds, settings.poll_interval_seconds)
     
     return settings.poll_interval_seconds
+
+
+def get_gsi_public_url(settings: "Settings") -> str:
+    """Public base URL of the GSI endpoint, or "" if not configured."""
+    url = settings.gsi_public_url.strip()
+    if not url:
+        domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip()
+        url = f"https://{domain}" if domain else ""
+    return url.rstrip("/")
 
 
 def get_settings() -> Settings:

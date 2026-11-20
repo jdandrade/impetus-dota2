@@ -9,9 +9,10 @@ import asyncio
 import logging
 import sys
 
-from app.config import get_settings, TRACKED_PLAYERS
+from app.config import get_settings, get_gsi_public_url, TRACKED_PLAYERS
 from app.bot import ProfessorBot
 from app.tracker import MatchTracker
+from app.gsi import GSIServer
 from app.youtube_tracker import YouTubeTracker
 from app.nerd_tracker import NerdOfTheDayTracker
 from app.services.redis_store import RedisStore
@@ -79,6 +80,26 @@ async def main():
         gemini_client=gemini_client,
         settings=settings,
     )
+    
+    # Live tracking via Dota 2 Game State Integration (opt-in per player)
+    gsi_server = None
+    if settings.gsi_enabled:
+        gsi_public_url = get_gsi_public_url(settings)
+        gsi_server = GSIServer(
+            bot=bot,
+            redis_store=redis_store,
+            gemini_client=gemini_client,
+            match_tracker=match_tracker,
+            settings=settings,
+        )
+        bot.enable_live_setup(redis_store, gsi_public_url, TRACKED_PLAYERS)
+        if gsi_public_url:
+            logger.info(f"Live tracking (GSI) enabled at {gsi_public_url}/gsi")
+        else:
+            logger.warning(
+                "Live tracking (GSI): no public URL (set GSI_PUBLIC_URL or "
+                "generate a Railway domain); /dota-live-setup will not hand out configs"
+            )
     
     # Initialize YouTube tracker (if API key is configured)
     youtube_tracker = None
@@ -152,6 +173,12 @@ async def main():
     
     # Start bot with trackers
     async with bot:
+        if gsi_server:
+            try:
+                await gsi_server.start()
+            except Exception as e:
+                logger.exception(f"Failed to start GSI endpoint: {e}")
+                gsi_server = None
         bot.loop.create_task(run_match_tracker())
         if youtube_tracker:
             bot.loop.create_task(run_youtube_tracker())
@@ -167,6 +194,8 @@ async def main():
                 youtube_tracker.stop()
             if nerd_tracker:
                 nerd_tracker.stop()
+            if gsi_server:
+                await gsi_server.stop()
             await redis_store.disconnect()
 
 
