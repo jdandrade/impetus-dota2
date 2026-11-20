@@ -138,8 +138,9 @@ class GeminiClient:
         if previous:
             prompt += "Já disseste neste jogo (não repitas a piada):\n" + "\n".join(f"- {p}" for p in previous) + "\n"
         prompt += (
-            "\nEscreve UMA única frase curta (máximo 25 palavras) a reagir a este momento, "
-            "no teu estilo habitual. Não inventes o resultado do jogo. Sem introduções."
+            "\nEscreve UMA única frase muito curta (máximo 12 palavras) a reagir a este momento, "
+            "no teu estilo habitual. Não repitas o nome do herói nem os números. "
+            "Não inventes o resultado do jogo. Sem introduções."
         )
         try:
             # The SDK call is blocking; keep it off the event loop so GSI
@@ -148,7 +149,9 @@ class GeminiClient:
                 self.roast_model.generate_content,
                 prompt,
                 generation_config=genai.GenerationConfig(
-                    max_output_tokens=800,
+                    # Generous on purpose: the model's hidden reasoning counts
+                    # against this limit, and a tight cap returns no text at all.
+                    max_output_tokens=2000,
                     temperature=0.9,
                 ),
             )

@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # https://my-bot.up.railway.app. Defaults to Railway's public domain.
     gsi_public_url: str = Field(default="", env="GSI_PUBLIC_URL")
     # Max live roasts per player per game (they all go into one live post)
-    gsi_max_moments: int = Field(default=12, env="GSI_MAX_MOMENTS")
+    gsi_max_moments: int = Field(default=6, env="GSI_MAX_MOMENTS")
     
     # Post-game smurf check: flag enemies with fewer lifetime games than this
     smurf_check_enabled: bool = Field(default=True, env="SMURF_CHECK_ENABLED")

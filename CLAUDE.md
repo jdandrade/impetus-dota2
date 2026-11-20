@@ -242,7 +242,7 @@ When adding a new tracked player, update `packages/group-lore/group_lore/players
 - `STEAM_POLL_INTERVAL_SECONDS` — Poll interval when the Steam key is set (default: 60)
 - `GSI_ENABLED` — Enable the live-tracking GSI endpoint (default: true)
 - `GSI_PUBLIC_URL` — Public base URL game clients post to (default: `https://$RAILWAY_PUBLIC_DOMAIN`)
-- `GSI_MAX_MOMENTS` — Max live moment roasts per player per game (default: 12)
+- `GSI_MAX_MOMENTS` — Max live moment roasts per player per game (default: 6)
 - `PORT` — Port for the GSI endpoint (default: 8080; set by Railway)
 - `SMURF_CHECK_ENABLED` — Post-game smurf check on report cards (default: true)
 - `SMURF_MAX_GAMES` — Enemies with fewer lifetime games than this are flagged (default: 200)
