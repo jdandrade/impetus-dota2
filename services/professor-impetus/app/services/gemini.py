@@ -64,6 +64,7 @@ class GeminiClient:
         player_name: str,
         match: MatchData,
         imp_result: IMPResult,
+        smurf_note: Optional[str] = None,
     ) -> str:
         """
         Generate a roast message for a player's performance.
@@ -72,6 +73,7 @@ class GeminiClient:
             player_name: Display name of the player
             match: Match data from OpenDota
             imp_result: IMP score result from our API
+            smurf_note: Optional result of the post-game smurf check
         
         Returns:
             Roast message string
@@ -86,6 +88,7 @@ class GeminiClient:
                 kda=match.kda_string,
                 is_victory=match.is_victory,
                 duration=match.duration_string,
+                smurf_note=smurf_note,
             )
             
             logger.debug(f"Generating roast for {player_name} with prompt: {user_prompt[:100]}...")

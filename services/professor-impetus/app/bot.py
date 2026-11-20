@@ -37,6 +37,7 @@ def build_match_embed(
     imp_score: float,
     grade: str,
     roast: str,
+    smurf_line: Optional[str] = None,
 ) -> discord.Embed:
     """
     Build a rich embed for the match announcement.
@@ -114,6 +115,14 @@ def build_match_embed(
         value="\u200b",
         inline=True,
     )
+    
+    # Post-game smurf check of the enemy team
+    if smurf_line:
+        embed.add_field(
+            name="Smurf check",
+            value=smurf_line[:1024],
+            inline=False,
+        )
     
     # Roast as description
     embed.description = f"💬 *{roast}*"
@@ -326,6 +335,7 @@ class ProfessorBot(discord.Client):
         imp_score: float,
         grade: str,
         roast: str,
+        smurf_line: Optional[str] = None,
     ) -> bool:
         """
         Send a match announcement to the configured channel.
@@ -350,6 +360,7 @@ class ProfessorBot(discord.Client):
                 imp_score=imp_score,
                 grade=grade,
                 roast=roast,
+                smurf_line=smurf_line,
             )
             
             view = ViewMatchButton(match_id)

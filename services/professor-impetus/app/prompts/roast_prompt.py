@@ -5,6 +5,8 @@ Player identities are loaded from the shared group-lore package.
 This file contains only Dota 2-specific roast content.
 """
 
+from typing import Optional
+
 from group_lore import (
     build_players_prompt_block,
     build_name_mappings,
@@ -86,10 +88,15 @@ def build_user_prompt(
     kda: str,
     is_victory: bool,
     duration: str,
+    smurf_note: Optional[str] = None,
 ) -> str:
     """
     Build the user prompt for a roast generation.
+    
+    Args:
+        smurf_note: Optional result of the post-game smurf check (Portuguese)
     """
+    smurf_block = f"\n{smurf_note}\n" if smurf_note else ""
     victory_text = "Sim" if is_victory else "Não"
 
     # Map in-game names to group nicknames using shared lore
@@ -115,7 +122,7 @@ Grau: {grade}
 KDA: {kda}
 Vitória: {victory_text}
 Duração: {duration}
-
+{smurf_block}
 {role_instruction}
 
 INSTRUÇÃO FINAL: Faz o roast em 2-3 linhas. Usa o nome "{display_name}" no roast,

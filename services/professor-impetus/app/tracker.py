@@ -17,6 +17,7 @@ from app.services.opendota import (
     MatchData,
 )
 from app.services import steam_api
+from app.services.smurf import SmurfReport, check_enemies
 from app.services.imp_engine import calculate_imp, IMPResult
 from app.services.gemini import GeminiClient
 from app.services.redis_store import RedisStore
@@ -56,6 +57,8 @@ class MatchTracker:
         self._last_opendota_poll: dict[str, float] = {}
         # Failed detail fetches per detected match ID
         self._detail_attempts: dict[int, int] = {}
+        # Smurf check results per (match ID, side)
+        self._smurf_reports: dict[tuple, SmurfReport] = {}
     
     async def start(self) -> None:
         """Start the match tracking loop."""
@@ -149,12 +152,15 @@ class MatchTracker:
                 summary="Score unavailable",
             )
         
+        smurfs = await self._smurf_report(match)
+        
         # Generate roast - use group nickname for proper recognition
         player_name = fallback_name
         roast = await self.gemini.generate_roast(
             player_name=player_name,
             match=match,
             imp_result=imp_result,
+            smurf_note=smurfs.prompt_note() if smurfs else None,
         )
         
         # Send Discord announcement
@@ -168,7 +174,38 @@ class MatchTracker:
             imp_score=imp_result.imp_score,
             grade=imp_result.grade,
             roast=roast,
+            smurf_line=smurfs.embed_line() if smurfs else None,
         )
+    
+    async def _smurf_report(self, match: MatchData) -> Optional[SmurfReport]:
+        """
+        Smurf check of the enemy team, or None if disabled or unavailable.
+        Cached per match and side so friends on the same team share it.
+        Never raises: the report card must go out regardless.
+        """
+        if not self.settings.smurf_check_enabled:
+            return None
+        
+        key = (match.match_id, match.is_radiant)
+        if key in self._smurf_reports:
+            return self._smurf_reports[key]
+        
+        try:
+            report = await check_enemies(match, self.settings.smurf_max_games)
+        except Exception as e:
+            logger.exception(f"Smurf check failed for match {match.match_id}: {e}")
+            return None
+        
+        if report is not None:
+            if len(self._smurf_reports) > 50:
+                self._smurf_reports.clear()
+            self._smurf_reports[key] = report
+            if report.suspects:
+                logger.info(
+                    f"Smurf check, match {match.match_id}: "
+                    + ", ".join(f"{s.hero_name} ({s.games} games)" for s in report.suspects)
+                )
+        return report
     
     async def process_finished_match(self, match_id: int, steam_id: str) -> bool:
         """

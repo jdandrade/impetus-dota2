@@ -81,6 +81,10 @@ class PlayerMinimal:
     net_worth: int
     lane: Optional[int]  # 1=safelane, 2=mid, 3=offlane
     is_radiant: bool
+    account_id: Optional[int] = None  # None or 4294967295 when the player hides match data
+    kills: int = 0
+    deaths: int = 0
+    assists: int = 0
 
 
 @dataclass
@@ -408,6 +412,10 @@ async def _fetch_match_data(
             net_worth=p.get("net_worth", 0),
             lane=p.get("lane"),  # 1=safelane, 2=mid, 3=offlane
             is_radiant=p.get("player_slot", 0) < 128,
+            account_id=p.get("account_id"),
+            kills=p.get("kills", 0),
+            deaths=p.get("deaths", 0),
+            assists=p.get("assists", 0),
         ))
     
     hero_id = player_stats.get("hero_id", 0)
@@ -437,6 +445,49 @@ async def _fetch_match_data(
         all_players=all_players,
         start_time=match_data.get("start_time"),
     )
+
+
+# Lifetime game counts: account_id -> (total, timestamp)
+_total_games_cache: Dict[int, tuple] = {}
+TOTAL_GAMES_CACHE_TTL = 86400
+
+
+async def get_player_total_games(account_id: int) -> Optional[int]:
+    """
+    Get how many games OpenDota knows for a player (wins + losses).
+    
+    Returns:
+        Total games (0 if OpenDota has no history for the account), or None
+        if the lookup failed or we are rate limited.
+    """
+    now = time.time()
+    cached = _total_games_cache.get(account_id)
+    if cached and now - cached[1] < TOTAL_GAMES_CACHE_TTL:
+        return cached[0]
+    
+    if _rate_limiter.is_backing_off():
+        return None
+    
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(f"{OPENDOTA_API_BASE}/players/{account_id}/wl") as resp:
+                if resp.status == 429:
+                    _rate_limiter.record_rate_limit()
+                    return None
+                if resp.status != 200:
+                    return None
+                _rate_limiter.record_success()
+                data = await resp.json()
+    except Exception as e:
+        logger.warning(f"Failed to fetch total games for {account_id}: {type(e).__name__}")
+        return None
+    
+    total = int(data.get("win") or 0) + int(data.get("lose") or 0)
+    if len(_total_games_cache) > 5000:
+        _total_games_cache.clear()
+    _total_games_cache[account_id] = (total, now)
+    return total
 
 
 async def _get_cached_player_name(
