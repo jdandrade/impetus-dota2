@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 POSTED_VIDEOS_KEY = "youtube:posted_videos"
 # TTL for posted videos (30 days)
 VIDEO_TTL_SECONDS = 60 * 60 * 24 * 30
+# How many recent match IDs to remember per player
+SEEN_MATCHES_KEPT = 20
 
 
 class RedisStore:
@@ -45,62 +47,67 @@ class RedisStore:
             await self._client.close()
             logger.info("Disconnected from Redis")
     
-    async def get_last_match_id(self, steam_id: str) -> Optional[int]:
-        """
-        Get the last processed match ID for a player.
-        
-        Args:
-            steam_id: Steam ID 64 of the player
-        
-        Returns:
-            Last match ID or None if not found
-        """
+    # Match deduplication
+    #
+    # Each player has a sorted set of the last SEEN_MATCHES_KEPT match IDs
+    # (score = match ID). Unlike the YouTube helpers below, these methods
+    # RAISE on Redis failure: the caller must skip the announcement rather
+    # than treat "could not read state" as "never seen" and repost.
+
+    @staticmethod
+    def _seen_key(steam_id: str) -> str:
+        return f"player:{steam_id}:seen_matches"
+
+    def _require_client(self) -> redis.Redis:
         if not self._client:
-            return None
-        
-        try:
-            key = f"player:{steam_id}:last_match"
-            value = await self._client.get(key)
-            return int(value) if value else None
-        except Exception as e:
-            logger.error(f"Error getting last match for {steam_id}: {e}")
-            return None
-    
-    async def set_last_match_id(self, steam_id: str, match_id: int) -> bool:
+            raise RuntimeError("Redis client is not connected")
+        return self._client
+
+    async def get_seen_match_ids(self, steam_id: str) -> set[int]:
         """
-        Store the last processed match ID for a player.
-        
-        Args:
-            steam_id: Steam ID 64 of the player
-            match_id: Match ID to store
-        
+        Get the recently seen match IDs for a player.
+
+        Seeds the set from the legacy single-value `last_match` key the
+        first time it is read, so upgrading does not re-announce anything.
+
+        Raises:
+            Exception: if Redis is unavailable.
+        """
+        client = self._require_client()
+        key = self._seen_key(steam_id)
+
+        members = await client.zrange(key, 0, -1)
+        if members:
+            return {int(m) for m in members}
+
+        legacy = await client.get(f"player:{steam_id}:last_match")
+        if legacy:
+            await client.zadd(key, {str(int(legacy)): int(legacy)})
+            logger.info(f"Migrated legacy last match {legacy} for {steam_id}")
+            return {int(legacy)}
+
+        return set()
+
+    async def claim_match(self, steam_id: str, match_id: int) -> bool:
+        """
+        Atomically record a match as seen for a player.
+
         Returns:
-            True if successful
+            True if the match was not recorded before (caller owns the
+            announcement), False if it was already there.
+
+        Raises:
+            Exception: if Redis is unavailable.
         """
-        if not self._client:
-            return False
-        
-        try:
-            key = f"player:{steam_id}:last_match"
-            # Set with 30-day TTL
-            await self._client.set(key, str(match_id), ex=60 * 60 * 24 * 30)
-            return True
-        except Exception as e:
-            logger.error(f"Error setting last match for {steam_id}: {e}")
-            return False
-    
-    async def initialize_players(self, steam_ids: list[str]) -> None:
-        """
-        Initialize tracking for players (no-op if already tracked).
-        
-        Args:
-            steam_ids: List of Steam ID 64s to initialize
-        """
-        for steam_id in steam_ids:
-            exists = await self.get_last_match_id(steam_id)
-            if exists is None:
-                logger.info(f"Initialized tracking for player {steam_id}")
-    
+        client = self._require_client()
+        key = self._seen_key(steam_id)
+
+        added = await client.zadd(key, {str(match_id): match_id}, nx=True)
+        # Keep only the newest SEEN_MATCHES_KEPT IDs. No TTL: an expiring key
+        # makes an inactive player's old match look new again.
+        await client.zremrangebyrank(key, 0, -(SEEN_MATCHES_KEPT + 1))
+        return bool(added)
+
     # YouTube video deduplication methods
     
     async def has_video_been_posted(self, video_id: str) -> bool:
