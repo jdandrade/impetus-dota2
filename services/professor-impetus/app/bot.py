@@ -128,7 +128,7 @@ GSI_CONFIG_FILENAME = "gamestate_integration_impetus.cfg"
 
 LIVE_SETUP_INSTRUCTIONS = """**Live Dota 2 tracking for {player}**
 
-This uses Valve's built-in Game State Integration. Nothing gets installed: the attached file is plain text you can open and read. It tells your Dota client to send your own in-game state (hero, K/D/A, items, game clock, result) to the Impetus bot while you play.
+This uses Valve's built-in Game State Integration. Nothing gets installed: the attached file is plain text you can open and read. It tells your Dota client to send your own in-game state (hero, K/D/A, gold, items, abilities, game clock, result, plus game events such as tips and chat lines, which the bot ignores) to the Impetus bot while you play.
 
 **1.** Save the attached `{filename}` into this folder (create `gamestate_integration` if it does not exist):
 Windows: `Steam\\steamapps\\common\\dota 2 beta\\game\\dota\\cfg\\gamestate_integration\\`
@@ -150,11 +150,12 @@ def build_gsi_config(uri: str, token: str) -> str:
     "heartbeat" "30.0"
     "data"
     {{
-        "provider" "1"
-        "map"      "1"
-        "player"   "1"
-        "hero"     "1"
-        "items"    "1"
+        "map"       "1"
+        "player"    "1"
+        "hero"      "1"
+        "items"     "1"
+        "abilities" "1"
+        "events"    "1"
     }}
     "auth"
     {{
@@ -271,12 +272,12 @@ class ProfessorBot(discord.Client):
                 f"re-invited with the applications.commands scope."
             )
     
-    async def send_live_message(self, content: str) -> Optional[discord.Message]:
+    async def send_embed(self, embed: discord.Embed) -> Optional[int]:
         """
-        Send a plain live-tracking message to the configured channel.
+        Send an embed to the configured channel.
         
         Returns:
-            The sent message (so it can be deleted later), or None on failure
+            The new message's ID (so it can be edited later), or None on failure
         """
         if not self._channel:
             self._channel = self.get_channel(self.channel_id)
@@ -286,12 +287,33 @@ class ProfessorBot(discord.Client):
             return None
         
         try:
-            return await self._channel.send(
-                content, allowed_mentions=discord.AllowedMentions.none()
+            message = await self._channel.send(
+                embed=embed, allowed_mentions=discord.AllowedMentions.none()
             )
+            return message.id
         except Exception as e:
-            logger.exception(f"Error sending live message: {e}")
+            logger.exception(f"Error sending embed: {e}")
             return None
+    
+    async def edit_embed(self, message_id: int, embed: discord.Embed) -> bool:
+        """
+        Replace the embed of a message this bot sent earlier.
+        
+        Returns:
+            True if edited successfully
+        """
+        if not self._channel:
+            self._channel = self.get_channel(self.channel_id)
+        
+        if not self._channel:
+            return False
+        
+        try:
+            await self._channel.get_partial_message(message_id).edit(embed=embed)
+            return True
+        except Exception as e:
+            logger.warning(f"Could not edit message {message_id}: {e}")
+            return False
     
     async def send_match_announcement(
         self,

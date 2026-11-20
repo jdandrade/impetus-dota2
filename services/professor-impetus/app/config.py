@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     # Public base URL players' game clients post to, e.g.
     # https://my-bot.up.railway.app. Defaults to Railway's public domain.
     gsi_public_url: str = Field(default="", env="GSI_PUBLIC_URL")
-    # Max live "moment" roasts per player per game
-    gsi_max_moments: int = Field(default=3, env="GSI_MAX_MOMENTS")
+    # Max live roasts per player per game (they all go into one live post)
+    gsi_max_moments: int = Field(default=12, env="GSI_MAX_MOMENTS")
     
     # Stratz API (fallback when OpenDota is rate limited)
     stratz_api_token: str = Field(default="", env="STRATZ_API_TOKEN")

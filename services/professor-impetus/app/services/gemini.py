@@ -114,18 +114,28 @@ class GeminiClient:
         hero_name: str,
         clock: str,
         situation: str,
+        previous: Optional[list] = None,
     ) -> Optional[str]:
         """
         Generate a one-line roast for something happening in a game that is
         still in progress. Returns None on failure (caller falls back).
+        
+        Args:
+            situation: What just happened, in Portuguese, phrased to follow
+                the player's name
+            previous: Roasts already made this game, so they are not repeated
         """
         prompt = (
             "MOMENTO AO VIVO (o jogo ainda está a decorrer, ainda não há resultado nem nota).\n"
             f"Jogador: {player_name}\n"
             f"Herói: {hero_name}\n"
             f"Minuto: {clock}\n"
-            f"O que aconteceu: {player_name} {situation}.\n\n"
-            "Escreve UMA única frase curta (máximo 25 palavras) a reagir a este momento, "
+            f"O que aconteceu: {player_name} {situation}.\n"
+        )
+        if previous:
+            prompt += "Já disseste neste jogo (não repitas a piada):\n" + "\n".join(f"- {p}" for p in previous) + "\n"
+        prompt += (
+            "\nEscreve UMA única frase curta (máximo 25 palavras) a reagir a este momento, "
             "no teu estilo habitual. Não inventes o resultado do jogo. Sem introduções."
         )
         try:
@@ -139,7 +149,7 @@ class GeminiClient:
                     temperature=0.9,
                 ),
             )
-            comment = response.text.strip()
+            comment = " ".join(response.text.split())
             return comment or None
         except Exception as e:
             logger.error(f"Error generating live comment for {player_name}: {e}")

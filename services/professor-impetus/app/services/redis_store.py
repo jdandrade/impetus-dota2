@@ -4,6 +4,7 @@ Tracks processed matches and posted videos to prevent duplicates.
 """
 
 import hashlib
+import json
 import logging
 import secrets
 from typing import Optional
@@ -139,6 +140,17 @@ class RedisStore:
         """Return the Steam ID 64 a GSI token belongs to, or None."""
         client = self._require_client()
         return await client.get(f"gsi:token:{self._token_hash(token)}")
+
+    async def get_json(self, key: str) -> Optional[dict]:
+        """Read a JSON object, or None if the key does not exist."""
+        client = self._require_client()
+        raw = await client.get(key)
+        return json.loads(raw) if raw else None
+
+    async def set_json(self, key: str, value: dict, ttl_seconds: int) -> None:
+        """Store a JSON object with a TTL."""
+        client = self._require_client()
+        await client.set(key, json.dumps(value), ex=ttl_seconds)
 
     async def claim_once(self, key: str, ttl_seconds: int = 60 * 60 * 24) -> bool:
         """Atomically claim a one-off event. True only for the first caller."""

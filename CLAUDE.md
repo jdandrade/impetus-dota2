@@ -138,7 +138,7 @@ The Dota 2 Discord bot (`professor-impetus`) independently polls OpenDota/Stratz
 - **Core modules:**
   - `app/bot.py` — `ProfessorBot` (discord.Client subclass), embed builders, match/video/nerd announcements, `/dota-live-setup` slash command (issues a per-player GSI token and sends the cfg file ephemerally)
   - `app/tracker.py` — `MatchTracker`: detects tracked players' new matches (Steam Web API if configured, else OpenDota → Stratz), fetches details only for unseen matches, calculates IMP scores, generates Gemini roasts
-  - `app/gsi.py` — `GSIServer`: aiohttp endpoint (`POST /gsi`, `GET /health`) receiving Dota 2 Game State Integration updates from opted-in players' game clients; posts game start, live moment roasts and the instant result, then calls `MatchTracker.process_finished_match()` to post report cards for every tracked player in that match
+  - `app/gsi.py` — `GSIServer`: aiohttp endpoint (`POST /gsi`, `GET /health`) receiving Dota 2 Game State Integration updates from opted-in players' game clients; keeps one live Discord post per game that is edited in place (scoreboard + feed of roasts triggered by deaths with unused items/ult/gold, therapy or idle Midas, low last hits, tips, streaks, no TP), freezes it with the result, then calls `MatchTracker.process_finished_match()` to post report cards for every tracked player in that match
   - `app/youtube_tracker.py` — `YouTubeTracker`: daily Dota 2 educational video posts at configurable hour (default 21:00 GMT), AI-triaged via Gemini
   - `app/nerd_tracker.py` — `NerdOfTheDayTracker`: daily "most addicted" player post at 00:00 Portuguese time
   - `app/config.py` — `Settings` (pydantic-settings from env), `TRACKED_PLAYERS` dict, Steam ID conversion, adaptive poll interval (10min normal, 30min off-hours 2-8am Portugal)
@@ -240,7 +240,7 @@ When adding a new tracked player, update `packages/group-lore/group_lore/players
 - `STEAM_POLL_INTERVAL_SECONDS` — Poll interval when the Steam key is set (default: 60)
 - `GSI_ENABLED` — Enable the live-tracking GSI endpoint (default: true)
 - `GSI_PUBLIC_URL` — Public base URL game clients post to (default: `https://$RAILWAY_PUBLIC_DOMAIN`)
-- `GSI_MAX_MOMENTS` — Max live moment roasts per player per game (default: 3)
+- `GSI_MAX_MOMENTS` — Max live moment roasts per player per game (default: 12)
 - `PORT` — Port for the GSI endpoint (default: 8080; set by Railway)
 - `STRATZ_API_TOKEN` — Stratz API fallback token
 - `YOUTUBE_API_KEY` — YouTube Data API v3 key (optional)
