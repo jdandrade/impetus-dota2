@@ -137,17 +137,18 @@ The Dota 2 Discord bot (`professor-impetus`) independently polls OpenDota/Stratz
 - **Entry:** `app/main.py` — Initializes bot, match tracker, YouTube tracker, nerd tracker
 - **Core modules:**
   - `app/bot.py` — `ProfessorBot` (discord.Client subclass), embed builders, match/video/nerd announcements
-  - `app/tracker.py` — `MatchTracker`: polls OpenDota for tracked players' new matches, calculates IMP scores, generates Gemini roasts
+  - `app/tracker.py` — `MatchTracker`: detects tracked players' new matches (Steam Web API if configured, else OpenDota → Stratz), fetches details only for unseen matches, calculates IMP scores, generates Gemini roasts
   - `app/youtube_tracker.py` — `YouTubeTracker`: daily Dota 2 educational video posts at configurable hour (default 21:00 GMT), AI-triaged via Gemini
   - `app/nerd_tracker.py` — `NerdOfTheDayTracker`: daily "most addicted" player post at 00:00 Portuguese time
   - `app/config.py` — `Settings` (pydantic-settings from env), `TRACKED_PLAYERS` dict, Steam ID conversion, adaptive poll interval (10min normal, 30min off-hours 2-8am Portugal)
 - **Services:**
+  - `app/services/steam_api.py` — Steam Web API client (Valve `IDOTA2Match_570`): primary new-match detection when `STEAM_API_KEY` is set
   - `app/services/opendota.py` — OpenDota API client (async, aiohttp)
   - `app/services/providers/stratz.py` — Stratz fallback provider
   - `app/services/imp_engine.py` — IMP Engine HTTP client
   - `app/services/gemini.py` — Gemini AI client for roast generation
   - `app/services/youtube.py` — YouTube Data API v3 client
-  - `app/services/redis_store.py` — Redis state management (tracking which matches have been announced)
+  - `app/services/redis_store.py` — Redis state management (last 20 seen match IDs per player in a sorted set; match methods raise on Redis errors so the tracker skips instead of reposting)
   - `app/services/email_notifier.py` — SMTP email notifications for errors
 - **Prompts:** `app/prompts/` — Gemini prompt templates for roasts and video triage
 - **Tracked players:** 6 players defined in `app/config.py` (Steam64 IDs)
@@ -234,6 +235,8 @@ When adding a new tracked player, update `packages/group-lore/group_lore/players
 - `FRONTEND_URL` — Frontend URL for "View Match" buttons
 - `POLL_INTERVAL_SECONDS` — Normal hours poll interval (default: 600)
 - `OFF_HOURS_POLL_INTERVAL` — Off-hours poll interval (default: 1800)
+- `STEAM_API_KEY` — Steam Web API key (optional; enables fast match detection, OpenDota/Stratz become fallbacks)
+- `STEAM_POLL_INTERVAL_SECONDS` — Poll interval when the Steam key is set (default: 60)
 - `STRATZ_API_TOKEN` — Stratz API fallback token
 - `YOUTUBE_API_KEY` — YouTube Data API v3 key (optional)
 - `YOUTUBE_POST_HOUR_GMT` — Hour to post daily video (default: 21)

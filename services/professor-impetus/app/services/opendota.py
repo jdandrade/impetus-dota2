@@ -12,7 +12,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Set
 
 import aiohttp
 
@@ -282,21 +282,35 @@ async def request_match_parse(match_id: int) -> bool:
             return False
 
 
-async def get_latest_match(account_id: int, fallback_name: str = "Unknown") -> Optional[MatchData]:
+def _is_known_match(match_id: int, seen_ids: Optional[Set[int]]) -> bool:
+    """True if a match was already handled, or is older than one that was."""
+    if not seen_ids:
+        return False
+    return match_id in seen_ids or match_id < max(seen_ids)
+
+
+async def get_latest_match(
+    account_id: int,
+    fallback_name: str = "Unknown",
+    seen_ids: Optional[Set[int]] = None,
+) -> Optional[MatchData]:
     """
     Fetch the latest match for a player from OpenDota with FULL stats.
     
     Optimizations:
+    - Skips the match details call when the latest match is already known
     - Uses cached player names (24h TTL) to reduce API calls
     - Respects rate limits with exponential backoff
-    - On 429, backs off instead of continuing to hammer the API
     
     Args:
         account_id: Dota 2 account ID (NOT Steam ID 64)
         fallback_name: Name to use if cache miss and API fails
+        seen_ids: Match IDs already handled for this player. If the latest
+            match is one of them (or older), returns None without fetching
+            its details.
     
     Returns:
-        MatchData if found, None otherwise
+        MatchData if a (new) match was found, None otherwise
     """
     # Check if we're in backoff mode
     if _rate_limiter.is_backing_off():
@@ -306,7 +320,6 @@ async def get_latest_match(account_id: int, fallback_name: str = "Unknown") -> O
     
     async with aiohttp.ClientSession() as session:
         try:
-            # Step 1: Get the latest match ID
             matches_url = f"{OPENDOTA_API_BASE}/players/{account_id}/recentMatches"
             async with session.get(matches_url) as resp:
                 if resp.status == 429:
@@ -324,76 +337,106 @@ async def get_latest_match(account_id: int, fallback_name: str = "Unknown") -> O
                 
                 match_id = matches[0].get("match_id")
             
-            # Step 2: Get player name from cache or API
-            player_name = await _get_cached_player_name(session, account_id, fallback_name)
-            
-            # Step 3: Fetch FULL match details
-            match_url = f"{OPENDOTA_API_BASE}/matches/{match_id}"
-            async with session.get(match_url) as resp:
-                if resp.status == 429:
-                    _rate_limiter.record_rate_limit()
-                    return None
-                if resp.status != 200:
-                    logger.error(f"Failed to fetch match {match_id}: {resp.status}")
-                    return None
-                
-                _rate_limiter.record_success()
-                match_data = await resp.json()
-            
-            # Step 4: Find the player in the match
-            player_stats = None
-            for player in match_data.get("players", []):
-                if player.get("account_id") == account_id:
-                    player_stats = player
-                    break
-            
-            if not player_stats:
-                logger.error(f"Player {account_id} not found in match {match_id}")
+            if _is_known_match(match_id, seen_ids):
                 return None
             
-            # Step 5: Extract all players for role detection
-            all_players = []
-            for p in match_data.get("players", []):
-                all_players.append(PlayerMinimal(
-                    hero_id=p.get("hero_id", 0),
-                    net_worth=p.get("net_worth", 0),
-                    lane=p.get("lane"),  # 1=safelane, 2=mid, 3=offlane
-                    is_radiant=p.get("player_slot", 0) < 128,
-                ))
-            
-            # Step 6: Build MatchData with FULL stats
-            hero_id = player_stats.get("hero_id", 0)
-            duration = match_data.get("duration", 0)
-            
-            return MatchData(
-                match_id=match_id,
-                hero_id=hero_id,
-                hero_name=HERO_NAMES.get(hero_id, f"Hero #{hero_id}"),
-                kills=player_stats.get("kills", 0),
-                deaths=player_stats.get("deaths", 0),
-                assists=player_stats.get("assists", 0),
-                gpm=player_stats.get("gold_per_min", 0),
-                xpm=player_stats.get("xp_per_min", 0),
-                net_worth=player_stats.get("net_worth", 0),
-                level=player_stats.get("level", 1),
-                hero_damage=player_stats.get("hero_damage", 0),
-                tower_damage=player_stats.get("tower_damage", 0),
-                hero_healing=player_stats.get("hero_healing", 0),
-                last_hits=player_stats.get("last_hits", 0),
-                denies=player_stats.get("denies", 0),
-                duration_seconds=duration,
-                is_radiant=player_stats.get("player_slot", 0) < 128,
-                radiant_win=match_data.get("radiant_win", False),
-                player_slot=player_stats.get("player_slot", 0),
-                player_name=player_name,
-                lane=player_stats.get("lane"),  # Add lane data
-                all_players=all_players,  # Add all players for role detection
-                start_time=match_data.get("start_time"),
-            )
+            return await _fetch_match_data(session, match_id, account_id, fallback_name)
             
         except Exception as e:
             logger.exception(f"Error fetching match for account {account_id}: {e}")
             return None
+
+
+async def get_match_data(
+    match_id: int,
+    account_id: int,
+    fallback_name: str = "Unknown",
+) -> Optional[MatchData]:
+    """
+    Fetch one player's FULL stats for a known match ID from OpenDota.
+    
+    Returns:
+        MatchData if found, None otherwise
+    """
+    if _rate_limiter.is_backing_off():
+        return None
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            return await _fetch_match_data(session, match_id, account_id, fallback_name)
+        except Exception as e:
+            logger.exception(f"Error fetching match {match_id} for account {account_id}: {e}")
+            return None
+
+
+async def _fetch_match_data(
+    session: aiohttp.ClientSession,
+    match_id: int,
+    account_id: int,
+    fallback_name: str,
+) -> Optional[MatchData]:
+    """Fetch match details from OpenDota and build MatchData for one player."""
+    player_name = await _get_cached_player_name(session, account_id, fallback_name)
+    
+    match_url = f"{OPENDOTA_API_BASE}/matches/{match_id}"
+    async with session.get(match_url) as resp:
+        if resp.status == 429:
+            _rate_limiter.record_rate_limit()
+            return None
+        if resp.status != 200:
+            logger.error(f"Failed to fetch match {match_id}: {resp.status}")
+            return None
+        
+        _rate_limiter.record_success()
+        match_data = await resp.json()
+    
+    player_stats = None
+    for player in match_data.get("players", []):
+        if player.get("account_id") == account_id:
+            player_stats = player
+            break
+    
+    if not player_stats:
+        logger.error(f"Player {account_id} not found in match {match_id}")
+        return None
+    
+    # All players, for role detection
+    all_players = []
+    for p in match_data.get("players", []):
+        all_players.append(PlayerMinimal(
+            hero_id=p.get("hero_id", 0),
+            net_worth=p.get("net_worth", 0),
+            lane=p.get("lane"),  # 1=safelane, 2=mid, 3=offlane
+            is_radiant=p.get("player_slot", 0) < 128,
+        ))
+    
+    hero_id = player_stats.get("hero_id", 0)
+    
+    return MatchData(
+        match_id=match_id,
+        hero_id=hero_id,
+        hero_name=HERO_NAMES.get(hero_id, f"Hero #{hero_id}"),
+        kills=player_stats.get("kills", 0),
+        deaths=player_stats.get("deaths", 0),
+        assists=player_stats.get("assists", 0),
+        gpm=player_stats.get("gold_per_min", 0),
+        xpm=player_stats.get("xp_per_min", 0),
+        net_worth=player_stats.get("net_worth", 0),
+        level=player_stats.get("level", 1),
+        hero_damage=player_stats.get("hero_damage", 0),
+        tower_damage=player_stats.get("tower_damage", 0),
+        hero_healing=player_stats.get("hero_healing", 0),
+        last_hits=player_stats.get("last_hits", 0),
+        denies=player_stats.get("denies", 0),
+        duration_seconds=match_data.get("duration", 0),
+        is_radiant=player_stats.get("player_slot", 0) < 128,
+        radiant_win=match_data.get("radiant_win", False),
+        player_slot=player_stats.get("player_slot", 0),
+        player_name=player_name,
+        lane=player_stats.get("lane"),
+        all_players=all_players,
+        start_time=match_data.get("start_time"),
+    )
 
 
 async def _get_cached_player_name(
@@ -454,7 +497,8 @@ def _get_stratz_provider():
 
 async def get_latest_match_with_fallback(
     account_id: int, 
-    fallback_name: str = "Unknown"
+    fallback_name: str = "Unknown",
+    seen_ids: Optional[Set[int]] = None,
 ) -> Optional[MatchData]:
     """
     Fetch the latest match with automatic fallback to Stratz on rate limit.
@@ -472,7 +516,7 @@ async def get_latest_match_with_fallback(
         MatchData if found, None otherwise
     """
     # First try OpenDota
-    result = await get_latest_match(account_id, fallback_name)
+    result = await get_latest_match(account_id, fallback_name, seen_ids)
     
     # If we got a result, return it
     if result is not None:

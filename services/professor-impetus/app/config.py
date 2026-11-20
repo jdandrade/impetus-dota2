@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # Off hours (2am-8am Portugal): 30 min = 1800s
     off_hours_poll_interval: int = Field(default=1800, env="OFF_HOURS_POLL_INTERVAL")
     
+    # Steam Web API (primary source for detecting new matches, when set)
+    # Get a key at https://steamcommunity.com/dev/apikey
+    steam_api_key: str = Field(default="", env="STEAM_API_KEY")
+    # Normal-hours poll interval when the Steam key is set. Steam allows
+    # ~100k calls/day, so this can be far shorter than poll_interval_seconds.
+    steam_poll_interval_seconds: int = Field(default=60, env="STEAM_POLL_INTERVAL_SECONDS")
+    
     # Stratz API (fallback when OpenDota is rate limited)
     stratz_api_token: str = Field(default="", env="STRATZ_API_TOKEN")
     
@@ -84,7 +91,8 @@ def get_poll_interval(settings: "Settings") -> int:
     Get adaptive poll interval based on current Portugal time.
     
     Off-hours (2am-8am Portugal): 30 min polling
-    Normal hours (8am-2am Portugal): 10 min polling
+    Normal hours (8am-2am Portugal): 10 min polling, or 1 min when a
+    Steam API key is configured
     """
     from datetime import datetime
     import pytz
@@ -95,6 +103,9 @@ def get_poll_interval(settings: "Settings") -> int:
     # Off hours: 2am to 8am (2, 3, 4, 5, 6, 7)
     if 2 <= current_hour < 8:
         return settings.off_hours_poll_interval
+    
+    if settings.steam_api_key:
+        return min(settings.steam_poll_interval_seconds, settings.poll_interval_seconds)
     
     return settings.poll_interval_seconds
 

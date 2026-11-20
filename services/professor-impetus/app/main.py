@@ -42,7 +42,13 @@ async def main():
         settings = get_settings()
         logger.info(f"IMP Engine URL: {settings.imp_engine_url}")
         logger.info(f"Frontend URL: {settings.frontend_url}")
-        logger.info(f"Poll interval: {settings.poll_interval_seconds}s")
+        if settings.steam_api_key:
+            logger.info(
+                f"Match detection: Steam Web API every {settings.steam_poll_interval_seconds}s "
+                f"(OpenDota fallback every {settings.poll_interval_seconds}s)"
+            )
+        else:
+            logger.info(f"Match detection: OpenDota every {settings.poll_interval_seconds}s (no STEAM_API_KEY)")
         logger.info(f"Tracking {len(TRACKED_PLAYERS)} players")
     except Exception as e:
         logger.error(f"Failed to load settings: {e}")
