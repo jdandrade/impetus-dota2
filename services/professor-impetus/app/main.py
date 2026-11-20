@@ -13,6 +13,7 @@ from app.config import get_settings, get_gsi_public_url, TRACKED_PLAYERS
 from app.bot import ProfessorBot
 from app.tracker import MatchTracker
 from app.gsi import GSIServer
+from app.release_notes import announce_release
 from app.youtube_tracker import YouTubeTracker
 from app.nerd_tracker import NerdOfTheDayTracker
 from app.services.redis_store import RedisStore
@@ -171,6 +172,14 @@ async def main():
         except Exception as e:
             logger.exception(f"Nerd tracker error: {e}")
     
+    async def run_release_announcement():
+        try:
+            await announce_release(bot, redis_store)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.exception(f"Release announcement error: {e}")
+    
     # Start bot with trackers
     async with bot:
         if gsi_server:
@@ -180,6 +189,7 @@ async def main():
                 logger.exception(f"Failed to start GSI endpoint: {e}")
                 gsi_server = None
         bot.loop.create_task(run_match_tracker())
+        bot.loop.create_task(run_release_announcement())
         if youtube_tracker:
             bot.loop.create_task(run_youtube_tracker())
         if nerd_tracker:
