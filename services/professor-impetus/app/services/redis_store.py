@@ -152,10 +152,18 @@ class RedisStore:
         client = self._require_client()
         await client.set(key, json.dumps(value), ex=ttl_seconds)
 
-    async def claim_once(self, key: str, ttl_seconds: int = 60 * 60 * 24) -> bool:
-        """Atomically claim a one-off event. True only for the first caller."""
+    async def claim_once(self, key: str, ttl_seconds: Optional[int] = 60 * 60 * 24) -> bool:
+        """
+        Atomically claim a one-off event. True only for the first caller.
+        Pass ttl_seconds=None for a claim that never expires.
+        """
         client = self._require_client()
         return bool(await client.set(key, "1", nx=True, ex=ttl_seconds))
+
+    async def release_claim(self, key: str) -> None:
+        """Undo claim_once, so the event can be claimed again."""
+        client = self._require_client()
+        await client.delete(key)
 
     # YouTube video deduplication methods
     
