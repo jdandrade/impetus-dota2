@@ -93,6 +93,7 @@ async def main():
             match_tracker=match_tracker,
             settings=settings,
         )
+        match_tracker.live_posts = gsi_server
         bot.enable_live_setup(redis_store, gsi_public_url, TRACKED_PLAYERS)
         if gsi_public_url:
             logger.info(f"Live tracking (GSI) enabled at {gsi_public_url}/gsi")

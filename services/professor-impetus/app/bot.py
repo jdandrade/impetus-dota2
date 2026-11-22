@@ -38,6 +38,7 @@ def build_match_embed(
     grade: str,
     roast: str,
     smurf_line: Optional[str] = None,
+    live_feed: Optional[list] = None,
 ) -> discord.Embed:
     """
     Build a rich embed for the match announcement.
@@ -123,6 +124,19 @@ def build_match_embed(
             value=smurf_line[:1024],
             inline=False,
         )
+    
+    # What happened during the game, for players with live tracking
+    if live_feed:
+        lines = [f"`{clock}` {text}" for clock, text in live_feed]
+        # Embed fields are capped at 1024 characters: drop the oldest lines
+        while lines and sum(len(line) + 1 for line in lines) > 1024:
+            lines.pop(0)
+        if lines:
+            embed.add_field(
+                name="Live moments",
+                value="\n".join(lines),
+                inline=False,
+            )
     
     # Roast as description
     embed.description = f"💬 *{roast}*"
@@ -338,9 +352,17 @@ class ProfessorBot(discord.Client):
         grade: str,
         roast: str,
         smurf_line: Optional[str] = None,
+        replace_message_id: Optional[int] = None,
+        live_feed: Optional[list] = None,
     ) -> bool:
         """
         Send a match announcement to the configured channel.
+        
+        Args:
+            replace_message_id: If set, edit this existing message (the
+                player's live post) into the announcement instead of sending
+                a new one. Falls back to a new message if the edit fails.
+            live_feed: [clock, text] lines from live tracking to include
         
         Returns:
             True if sent successfully
@@ -363,9 +385,24 @@ class ProfessorBot(discord.Client):
                 grade=grade,
                 roast=roast,
                 smurf_line=smurf_line,
+                live_feed=live_feed,
             )
             
             view = ViewMatchButton(match_id)
+            
+            if replace_message_id is not None:
+                try:
+                    await self._channel.get_partial_message(replace_message_id).edit(
+                        embed=embed, view=view
+                    )
+                    logger.info(
+                        f"Turned live post into match announcement for {player_name} (match {match_id})"
+                    )
+                    return True
+                except Exception as e:
+                    logger.warning(
+                        f"Could not edit live post {replace_message_id}, sending a new message: {e}"
+                    )
             
             await self._channel.send(embed=embed, view=view)
             logger.info(f"Sent match announcement for {player_name} (match {match_id})")
