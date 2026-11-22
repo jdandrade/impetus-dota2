@@ -162,6 +162,7 @@ class LiveGame:
     loading: bool = False
     ended: bool = False
     result: Optional[str] = None   # "win" | "loss" | "unknown"
+    replaced: bool = False         # the post now shows the report card
     last_seen: float = 0.0
     last_edit: float = 0.0
     refreshing: bool = False
@@ -307,7 +308,7 @@ def build_live_embed(game: LiveGame) -> discord.Embed:
 
     footer = "Professor Impetus · live from the game client"
     if game.ended and game.result in ("win", "loss"):
-        footer = "Professor Impetus · report card follows"
+        footer = "Professor Impetus · report card loading…"
     embed.set_footer(text=footer)
     return embed
 
@@ -676,6 +677,39 @@ class GSIServer:
 
     # ------------------------------------------------------------ background
 
+    async def take_live_post(self, steam_id: str, match_id: int) -> Optional[tuple[int, list]]:
+        """
+        Hand a player's live post for a match over to the report card.
+        
+        Called by the match tracker just before it posts a report card, so
+        the card can replace the live post instead of adding a second
+        message. After this the live post is never redrawn again.
+        
+        Returns:
+            (message ID, feed of [clock, roast] lines), or None if the
+            player has no live post for that match.
+        """
+        game = self._games.get(steam_id)
+        if game is not None and game.match_id == str(match_id):
+            if game.message_id is None:
+                return None
+            game.replaced = True
+            # Let a redraw that is already on its way to Discord land first,
+            # so it cannot overwrite the report card afterwards.
+            while game.refreshing:
+                await asyncio.sleep(0.05)
+            return game.message_id, list(game.feed)
+        
+        # Not in memory (restart since the game): use the persisted state
+        try:
+            raw = await self.redis.get_json(f"gsi:{match_id}:{steam_id}:live")
+        except Exception as e:
+            logger.error(f"Redis unavailable while looking up live post: {e}")
+            return None
+        if raw and raw.get("message_id"):
+            return raw["message_id"], [list(entry) for entry in raw.get("feed", [])]
+        return None
+
     async def _load(self, game: LiveGame) -> None:
         """Restore a game's persisted state (post ID, feed) after a restart."""
         try:
@@ -725,7 +759,8 @@ class GSIServer:
 
     async def _refresh(self, game: LiveGame) -> None:
         try:
-            while game.dirty:
+            # Once the post has become the report card it is no longer ours
+            while game.dirty and not game.replaced:
                 game.dirty = False
                 game.last_edit = time.monotonic()
                 embed = build_live_embed(game)
@@ -758,7 +793,10 @@ class GSIServer:
     async def _finish(self, game: LiveGame) -> None:
         logger.info(f"[GSI] {game.name} finished match {game.match_id}: {game.result}")
         await self._save(game)
+        # Show the frozen result first; the report card replaces it below
         self._request_refresh(game)
+        while game.refreshing:
+            await asyncio.sleep(0.05)
 
         # Report cards (IMP score + roast) for this player and any other
         # tracked players in the same match, as soon as the details exist.

@@ -59,6 +59,8 @@ class MatchTracker:
         self._detail_attempts: dict[int, int] = {}
         # Smurf check results per (match ID, side)
         self._smurf_reports: dict[tuple, SmurfReport] = {}
+        # Set by main when live tracking is on: object with take_live_post()
+        self.live_posts = None
     
     async def start(self) -> None:
         """Start the match tracking loop."""
@@ -133,10 +135,13 @@ class MatchTracker:
         
         logger.info(f"New match detected for {match.player_name or fallback_name}: {match.match_id}")
         
-        await self._announce(fallback_name, match)
+        await self._announce(steam_id, fallback_name, match)
     
-    async def _announce(self, fallback_name: str, match: MatchData) -> None:
-        """Score a match, generate the roast and post the report card."""
+    async def _announce(self, steam_id: str, fallback_name: str, match: MatchData) -> None:
+        """
+        Score a match, generate the roast and post the report card. If the
+        player has a live post for this match, the card replaces it.
+        """
         # Request parse for better data quality (fire and forget)
         asyncio.create_task(request_match_parse(match.match_id))
         
@@ -163,6 +168,14 @@ class MatchTracker:
             smurf_note=smurfs.prompt_note() if smurfs else None,
         )
         
+        # A live-tracked game already has a post: turn it into the report card
+        live_post = None
+        if self.live_posts is not None:
+            try:
+                live_post = await self.live_posts.take_live_post(steam_id, match.match_id)
+            except Exception as e:
+                logger.exception(f"Error looking up live post for match {match.match_id}: {e}")
+        
         # Send Discord announcement
         await self.bot.send_match_announcement(
             player_name=player_name,
@@ -175,6 +188,8 @@ class MatchTracker:
             grade=imp_result.grade,
             roast=roast,
             smurf_line=smurfs.embed_line() if smurfs else None,
+            replace_message_id=live_post[0] if live_post else None,
+            live_feed=live_post[1] if live_post else None,
         )
     
     async def _smurf_report(self, match: MatchData) -> Optional[SmurfReport]:
@@ -259,7 +274,7 @@ class MatchTracker:
             sid, name = accounts[account_id]
             if await self._should_announce(sid, name, match):
                 logger.info(f"Fast track: announcing match {match_id} for {name}")
-                await self._announce(name, match)
+                await self._announce(sid, name, match)
         
         return True
     
