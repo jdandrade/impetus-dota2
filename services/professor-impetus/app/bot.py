@@ -145,6 +145,8 @@ macOS: `~/Library/Application Support/Steam/steamapps/common/dota 2 beta/game/do
 **2.** In Steam: right-click Dota 2 → Properties → Launch Options → add `-gamestateintegration`
 **3.** Restart Dota 2.
 
+Only games played on the {player} Steam account are tracked; other accounts on the same PC are ignored.
+
 The file contains your personal token, so do not share it. Running this command again gives you a new file and disables the old one. To stop, delete the file."""
 
 

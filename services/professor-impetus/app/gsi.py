@@ -36,6 +36,7 @@ from app.services.opendota import HERO_NAMES
 logger = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 512 * 1024
+STEAM_ID64_BASE = 76561197960265728
 TOKEN_CACHE_SECONDS = 60
 
 STATE_PRE_GAME = "DOTA_GAMERULES_STATE_PRE_GAME"
@@ -325,6 +326,7 @@ class GSIServer:
         # token -> (steam_id or None, expiry). Caches misses too, so a wrong
         # token cannot be used to hammer Redis.
         self._token_cache: dict[str, tuple[Optional[str], float]] = {}
+        self._foreign_accounts: set[tuple[str, str]] = set()
         self._tasks: set[asyncio.Task] = set()
         self._runner: Optional[web.AppRunner] = None
         self._watchdog: Optional[asyncio.Task] = None
@@ -424,6 +426,12 @@ class GSIServer:
         if match_id == "0" or player.get("activity") != "playing" or map_.get("customgamename"):
             return
 
+        # The token only says whose cfg file this is. The file lives in the
+        # Dota install, so it is sent for ANY Steam account that plays on
+        # that PC: only track games played on the token owner's own account.
+        if not self._is_own_account(steam_id, player):
+            return
+
         game = self._games.get(steam_id)
         if game is None or game.match_id != match_id:
             if game is not None and not game.ended:
@@ -472,6 +480,27 @@ class GSIServer:
 
         if game.message_id is None or time.monotonic() - game.last_edit >= REFRESH_SECONDS:
             self._request_refresh(game)
+
+    def _is_own_account(self, steam_id: str, player: dict) -> bool:
+        """True if the account playing is the one the token was issued for."""
+        playing = str(player.get("steamid") or "")
+        if not playing:
+            account_id = str(player.get("accountid") or "")
+            if account_id.isdigit():
+                playing = str(int(account_id) + STEAM_ID64_BASE)
+        if playing == steam_id:
+            return True
+        
+        # Log each foreign account once, not on every update
+        if (steam_id, playing) not in self._foreign_accounts:
+            if len(self._foreign_accounts) > 100:
+                self._foreign_accounts.clear()
+            self._foreign_accounts.add((steam_id, playing))
+            logger.info(
+                f"[GSI] Ignoring updates sent with {TRACKED_PLAYERS[steam_id]}'s token "
+                f"from a different Steam account ({playing or 'unknown'})"
+            )
+        return False
 
     def _detect_moment(
         self, game: LiveGame, prev: Snapshot, snap: Snapshot, events
