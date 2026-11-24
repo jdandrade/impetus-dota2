@@ -139,6 +139,7 @@ The Dota 2 Discord bot (`professor-impetus`) independently polls OpenDota/Stratz
   - `app/bot.py` — `ProfessorBot` (discord.Client subclass), embed builders, match/video/nerd announcements, `/dota-live-setup` slash command (issues a per-player GSI token and sends the cfg file ephemerally)
   - `app/tracker.py` — `MatchTracker`: detects tracked players' new matches (Steam Web API if configured, else OpenDota → Stratz), fetches details only for unseen matches, calculates IMP scores, generates Gemini roasts
   - `app/gsi.py` — `GSIServer`: aiohttp endpoint (`POST /gsi`, `GET /health`) receiving Dota 2 Game State Integration updates from opted-in players' game clients; keeps one live Discord post per game that is edited in place (scoreboard + feed of roasts triggered by deaths with unused items/ult/gold, therapy or idle Midas, low last hits, tips, streaks, no TP), freezes it with the result, then (via `take_live_post()`) lets the report card replace that same post; calls `MatchTracker.process_finished_match()` to post report cards for every tracked player in that match
+  - `app/pro_feed.py` — `ProMatchFeed`: polls OpenDota `/live` for league games that just started, looks up the tournament (name, tier, prize pool, stream URLs) on Valve's public `GetLeagueData` endpoint, and posts once per series with stream link buttons; never shows scores or results (no spoilers)
   - `app/release_notes.py` — `RELEASE_VERSION` + `RELEASE_NOTES`: posted to the channel once per version on startup (claimed in Redis); bump both to announce a release
   - `app/youtube_tracker.py` — `YouTubeTracker`: daily Dota 2 educational video posts at configurable hour (default 21:00 GMT), AI-triaged via Gemini
   - `app/nerd_tracker.py` — `NerdOfTheDayTracker`: daily "most addicted" player post at 00:00 Portuguese time
@@ -246,6 +247,9 @@ When adding a new tracked player, update `packages/group-lore/group_lore/players
 - `PORT` — Port for the GSI endpoint (default: 8080; set by Railway)
 - `SMURF_CHECK_ENABLED` — Post-game smurf check on report cards (default: true)
 - `SMURF_MAX_GAMES` — Enemies with fewer lifetime games than this are flagged (default: 200)
+- `PRO_FEED_ENABLED` — Post when a pro series starts, with stream links (default: true)
+- `PRO_FEED_POLL_SECONDS` — Pro feed poll interval (default: 180)
+- `PRO_FEED_MIN_PRIZE_POOL` — Minimum tournament prize pool in USD to announce (default: 100000)
 - `STRATZ_API_TOKEN` — Stratz API fallback token
 - `YOUTUBE_API_KEY` — YouTube Data API v3 key (optional)
 - `YOUTUBE_POST_HOUR_GMT` — Hour to post daily video (default: 21)
