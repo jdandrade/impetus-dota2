@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     smurf_check_enabled: bool = Field(default=True, env="SMURF_CHECK_ENABLED")
     smurf_max_games: int = Field(default=200, env="SMURF_MAX_GAMES")
     
+    # Pro match feed: a post with stream links when a pro series starts
+    pro_feed_enabled: bool = Field(default=True, env="PRO_FEED_ENABLED")
+    pro_feed_poll_seconds: int = Field(default=180, env="PRO_FEED_POLL_SECONDS")
+    # Only tournaments with at least this prize pool (USD) are announced
+    pro_feed_min_prize_pool: int = Field(default=100000, env="PRO_FEED_MIN_PRIZE_POOL")
+    
     # Stratz API (fallback when OpenDota is rate limited)
     stratz_api_token: str = Field(default="", env="STRATZ_API_TOKEN")
     

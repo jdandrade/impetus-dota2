@@ -13,6 +13,7 @@ from app.config import get_settings, get_gsi_public_url, TRACKED_PLAYERS
 from app.bot import ProfessorBot
 from app.tracker import MatchTracker
 from app.gsi import GSIServer
+from app.pro_feed import ProMatchFeed
 from app.release_notes import announce_release
 from app.youtube_tracker import YouTubeTracker
 from app.nerd_tracker import NerdOfTheDayTracker
@@ -144,6 +145,13 @@ async def main():
     else:
         logger.info("Nerd of the Day feature disabled")
     
+    # Pro match feed (series starting in big tournaments, with stream links)
+    pro_feed = None
+    if settings.pro_feed_enabled:
+        pro_feed = ProMatchFeed(bot=bot, redis_store=redis_store, settings=settings)
+    else:
+        logger.info("Pro match feed disabled")
+    
     # Start trackers as background tasks
     async def run_match_tracker():
         try:
@@ -173,6 +181,14 @@ async def main():
         except Exception as e:
             logger.exception(f"Nerd tracker error: {e}")
     
+    async def run_pro_feed():
+        try:
+            await pro_feed.start()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.exception(f"Pro match feed error: {e}")
+    
     async def run_release_announcement():
         try:
             await announce_release(bot, redis_store)
@@ -191,6 +207,8 @@ async def main():
                 gsi_server = None
         bot.loop.create_task(run_match_tracker())
         bot.loop.create_task(run_release_announcement())
+        if pro_feed:
+            bot.loop.create_task(run_pro_feed())
         if youtube_tracker:
             bot.loop.create_task(run_youtube_tracker())
         if nerd_tracker:
@@ -205,6 +223,8 @@ async def main():
                 youtube_tracker.stop()
             if nerd_tracker:
                 nerd_tracker.stop()
+            if pro_feed:
+                pro_feed.stop()
             if gsi_server:
                 await gsi_server.stop()
             await redis_store.disconnect()

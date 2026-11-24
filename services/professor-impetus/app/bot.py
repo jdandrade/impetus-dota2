@@ -297,9 +297,11 @@ class ProfessorBot(discord.Client):
                 f"re-invited with the applications.commands scope."
             )
     
-    async def send_embed(self, embed: discord.Embed) -> Optional[int]:
+    async def send_embed(
+        self, embed: discord.Embed, view: Optional[ui.View] = None
+    ) -> Optional[int]:
         """
-        Send an embed to the configured channel.
+        Send an embed (optionally with buttons) to the configured channel.
         
         Returns:
             The new message's ID (so it can be edited later), or None on failure
@@ -312,8 +314,9 @@ class ProfessorBot(discord.Client):
             return None
         
         try:
+            kwargs = {"view": view} if view is not None else {}
             message = await self._channel.send(
-                embed=embed, allowed_mentions=discord.AllowedMentions.none()
+                embed=embed, allowed_mentions=discord.AllowedMentions.none(), **kwargs
             )
             return message.id
         except Exception as e:
