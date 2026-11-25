@@ -23,6 +23,7 @@ request handler only updates in-memory state and replies; everything slow
 import asyncio
 import json
 import logging
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Optional
@@ -71,8 +72,22 @@ WAND_FULL_CHARGES = 10
 # unknown mid-game, so anything below min is assumed to be a support.
 LAST_HIT_CHECKPOINTS = ((10 * 60, 12, 35), (20 * 60, 40, 90))
 
+# Info lines (Roshan, aegis, smoke, pause, ...) are posted as-is: no AI roast,
+# and they do not use up the roast budget. This caps them per game.
+INFO_LINES_MAX = 8
+SMOKE_CHECK_SECONDS = 3
+ROSHAN_RESPAWN_SECONDS = (8 * 60, 11 * 60)
+AEGIS_SECONDS = 5 * 60
+OPENING_BOUNTY_CLOCK = 120
+# (game clock, tier). Normal-game timings; tier 1 is there from the start.
+NEUTRAL_TIERS = ((15 * 60, 2), (25 * 60, 3), (35 * 60, 4), (60 * 60, 5))
+TREADS_INT_MANA = 120
+SMOKE_EVENT = "CHAT_MESSAGE_SMOKE_ACTIVATED"
+
 MIDAS = "item_hand_of_midas"
 RAPIER = "item_rapier"
+AEGIS = "item_aegis"
+TREADS = "item_power_treads"
 WANDS = ("item_magic_wand", "item_holy_locket")
 
 # Active items that could have saved a life; dying with one ready is a roast.
@@ -99,6 +114,60 @@ SAVE_ITEMS = {
     "item_cheese": "Cheese",
     "item_faerie_fire": "Faerie Fire",
 }
+
+# Short lines shown as-is: for info lines always, for roasts only when no AI
+# roast could be generated. One is picked at random so games do not all read
+# the same.
+LINES = {
+    "death": ("💀 Morreu {reason}", "💀 Foi ao chão {reason}", "💀 Caiu {reason}", "💀 Mais uma morte, {reason}"),
+    "first_blood": ("🩸 Deu o first blood", "🩸 First blood... para o inimigo", "🩸 Abriu o marcador, do lado errado"),
+    "tip_received": ("💸 Recebeu um tip", "💸 Levou com um tip", "💸 Tip recebido. Não era elogio."),
+    "tip_sent": ("💸 Deu um tip", "💸 Mandou um tip", "💸 Anda a distribuir tips"),
+    "aegis_mine": ("🛡️ Apanhou a Aegis", "🛡️ Aegis no bolso"),
+    "aegis_mine_snatched": ("🛡️ Roubou a Aegis", "🛡️ Aegis roubada, à ladrão"),
+    "aegis_mine_denied": ("🛡️ Negou a Aegis", "🛡️ Aegis negada. Ninguém fica com ela."),
+    "aegis_expired": ("🛡️ Deixou a Aegis expirar", "🛡️ 5 minutos de Aegis para nada", "🛡️ Aegis fora de prazo"),
+    "therapy_midas": ("🩹 Therapy Midas", "🩹 Midas para se sentir melhor", "🩹 Midas de consolação"),
+    "rapier": ("🗡️ Comprou Divine Rapier", "🗡️ Rapier. Vai correr bem.", "🗡️ All-in: Divine Rapier"),
+    "multi_kill": ("🔥 {n} kills em {s}s", "🔥 {n} de seguida em {s}s", "🔥 Limpou {n} em {s}s"),
+    "streak": ("🔥 Kill streak de {n}", "🔥 {n} kills sem morrer", "🔥 Vai em {n} seguidas"),
+    "last_hits": ("🌾 {n} last hits aos {m} min", "🌾 Aos {m} min: {n} last hits", "🌾 {n} creeps em {m} minutos"),
+    "midas_idle": ("⏳ Midas parado há {s}s", "⏳ Midas pronto há {s}s, a apanhar pó", "⏳ Usa o Midas ({s}s parado)"),
+    "midas_late": ("⏳ Midas finalmente usado, {s}s atrasado", "⏳ Lembrou-se do Midas, {s}s depois"),
+    "no_tp": ("🚶 Sem TP scroll", "🚶 Onde está o TP?", "🚶 A pé, sem TP"),
+    "tp_found": ("🌀 Finalmente comprou TP, {s}s depois", "🌀 TP comprado. Só demorou {s}s."),
+    "tp_death": ("🌀 Só arranjou TP porque morreu ({s}s sem ele)", "🌀 Morreu e lá comprou o TP, {s}s depois"),
+    "smoke_fomo": ("🌫️ A equipa fez smoke sem ele", "🌫️ Smoke gank... e ele ficou em casa", "🌫️ Ficou de fora do smoke"),
+    # info lines
+    "smoked": ("🌫️ Em smoke. Vem aí gank.", "🌫️ Smoke ativo", "🌫️ Desapareceu do mapa (smoke)"),
+    "pause": ("⏸️ Quem pausou o jogo?", "⏸️ Jogo em pausa", "⏸️ Pausa. Alguém foi buscar café."),
+    "roshan_ours": ("🐲 Roshan morto pela nossa equipa · volta entre {lo} e {hi}",),
+    "roshan_theirs": ("🐲 O inimigo matou o Roshan · volta entre {lo} e {hi}",),
+    "aegis_ours": ("🛡️ Aegis para a nossa equipa",),
+    "aegis_ours_snatched": ("🛡️ A nossa equipa roubou a Aegis",),
+    "aegis_theirs": ("🛡️ Aegis para o inimigo",),
+    "aegis_theirs_snatched": ("🛡️ O inimigo roubou a Aegis",),
+    "aegis_denied": ("🛡️ Aegis negada",),
+    "bounties": ("💰 Bounties iniciais: {n}/4",),
+    "neutral": ("🎁 Neutral items de tier {n} disponíveis",),
+    "treads": ("👟 Trocou os treads {n}x e poupou {mana} de mana",),
+}
+
+
+def _line(key: str, **values) -> str:
+    return random.choice(LINES[key]).format(**values)
+
+
+@dataclass
+class Moment:
+    """Something that just happened and belongs in the live post."""
+    # Follows the player's name in the roast prompt; may carry model hints
+    situation: str
+    # Shown as-is for info lines, or when no roast could be generated
+    fallback: str
+    # False: an info line, posted as-is without an AI roast
+    roast: bool = True
+
 
 INVENTORY_SLOTS = ("slot0", "slot1", "slot2", "slot3", "slot4", "slot5", "neutral0")
 
@@ -129,6 +198,10 @@ class Snapshot:
     xpm: int = 0
     level: int = 0
     alive: bool = True
+    smoked: bool = False
+    paused: bool = False
+    mana: int = 0
+    max_mana: int = 0
     buyback_gold_spent: int = 0
     player_slot: Optional[int] = None
     items: dict = field(default_factory=dict)        # item name -> ItemState
@@ -157,6 +230,7 @@ class LiveGame:
     feed: list = field(default_factory=list)   # [clock string, roast]
     fired: set = field(default_factory=set)
     moments: int = 0
+    info_lines: int = 0
 
     ready: bool = False            # persisted state has been loaded
     loading: bool = False
@@ -176,6 +250,14 @@ class LiveGame:
     midas_ready_since: Optional[int] = None
     midas_idle_roasts: int = 0
     no_tp_since: Optional[int] = None
+    midas_told_since: Optional[int] = None   # idle Midas was called out
+    no_tp_told_since: Optional[int] = None   # missing TP was called out
+    smoke_check_clock: Optional[int] = None  # a teammate just used smoke
+    aegis_since: Optional[int] = None
+    opening_bounties: int = 0
+    treads_mana_at_toggle: Optional[int] = None
+    tread_toggles: int = 0
+    tread_mana_saved: int = 0
     seen_events: set = field(default_factory=set)
 
     @property
@@ -218,6 +300,10 @@ def parse_snapshot(data: dict) -> Snapshot:
         xpm=_int(player.get("xpm")),
         level=_int(hero.get("level")),
         alive=hero.get("alive") is not False,
+        smoked=hero.get("smoked") is True,
+        paused=map_.get("paused") is True,
+        mana=_int(hero.get("mana")),
+        max_mana=_int(hero.get("max_mana")),
         buyback_gold_spent=_int(player.get("gold_spent_on_buybacks")),
         player_slot=player.get("player_slot") if isinstance(player.get("player_slot"), int) else None,
     )
@@ -461,6 +547,11 @@ class GSIServer:
         if win_team and win_team != "none":
             game.ended = True
             game.result = "win" if snap.team == win_team else "loss"
+            if game.tread_toggles:
+                game.feed.append([
+                    _clock_string(snap.clock),
+                    _line("treads", n=game.tread_toggles, mana=game.tread_mana_saved),
+                ])
             self._spawn(self._finish(game))
             return
 
@@ -469,7 +560,18 @@ class GSIServer:
             return
 
         if prev is not None and snap.game_state == STATE_IN_PROGRESS:
-            moment = self._detect_moment(game, prev, snap, data.get("events"))
+            moments = self._detect_moments(game, prev, snap, data.get("events"))
+
+            info = [m.fallback for m in moments if not m.roast]
+            info = info[:max(0, INFO_LINES_MAX - game.info_lines)]
+            if info:
+                game.info_lines += len(info)
+                clock = _clock_string(snap.clock)
+                game.feed.extend([clock, line] for line in info)
+                self._spawn(self._save(game))
+                self._request_refresh(game)
+
+            moment = next((m for m in moments if m.roast), None)
             if (
                 moment
                 and game.moments < self.settings.gsi_max_moments
@@ -503,22 +605,22 @@ class GSIServer:
             )
         return False
 
-    def _detect_moment(
+    def _detect_moments(
         self, game: LiveGame, prev: Snapshot, snap: Snapshot, events
-    ) -> Optional[tuple[str, str]]:
+    ) -> list[Moment]:
         """
-        Compare two consecutive snapshots and return the most roast-worthy
-        thing that just happened, or None. Updates the game's trigger
-        bookkeeping.
-        
-        Returns:
-            (situation, fallback), both in Portuguese. `situation` follows
-            the player's name in the roast prompt and may carry hints for
-            the model. `fallback` is a short line shown as-is if no roast
-            could be generated.
+        Compare two consecutive snapshots and return what just happened,
+        most roast-worthy first (text in Portuguese). Updates the game's
+        trigger bookkeeping.
+
+        The caller roasts at most the first Moment with roast=True and posts
+        every info Moment (roast=False) as-is.
         """
         clock = snap.clock
-        candidates: list[tuple[str, str]] = []  # most important first
+        candidates: list[Moment] = []  # most important first
+        ours, theirs = snap.radiant_score, snap.dire_score
+        if snap.team == "dire":
+            ours, theirs = theirs, ours
 
         def once(key: str) -> bool:
             if key in game.fired:
@@ -536,6 +638,13 @@ class GSIServer:
             # Each kind of blunder is roasted once per game, so a player
             # who keeps dying the same way does not fill the post.
             reasons = []
+
+            first_blood = (
+                snap.team in ("radiant", "dire") and ours == 0 and theirs == 1
+                and once("first_blood")
+            )
+            if first_blood:
+                reasons.append("e deu o first blood ao inimigo")
 
             unused = [
                 label for item, label in SAVE_ITEMS.items()
@@ -572,64 +681,111 @@ class GSIServer:
             for milestone in DEATH_MILESTONES:
                 if snap.deaths >= milestone and once(f"deaths{milestone}"):
                     reasons.append(f"pela {snap.deaths}ª vez")
+            if prev.kill_streak >= KILL_STREAK_MILESTONES[0]:
+                reasons.append(f"perdendo a kill streak de {prev.kill_streak}")
 
             if reasons:
-                candidates.append((
+                candidates.append(Moment(
                     f"acabou de morrer {', '.join(reasons)} ({snap.kda})",
-                    f"💀 Morreu {reasons[0]}",
+                    _line("first_blood") if first_blood else _line("death", reason=reasons[0]),
                 ))
 
-        # --- tips and aegis (events block)
+        # --- tips, Roshan, aegis, bounties, smoke (events block)
         if isinstance(events, list) and snap.player_slot is not None:
             for event in events:
                 if not isinstance(event, dict):
                     continue
                 kind = event.get("event_type")
+                payload = event.get("data")
                 event_key = (
                     kind, event.get("game_time"), event.get("sender_player_id"),
                     event.get("receiver_player_id"), event.get("player_id"),
+                    payload if isinstance(payload, str) else None,
                 )
                 if event_key in game.seen_events:
                     continue
                 game.seen_events.add(event_key)
-                if kind == "tip" and event.get("receiver_player_id") == snap.player_slot:
-                    candidates.append((
-                        "acabou de receber um tip de outro jogador (quase de certeza a gozar com ele)",
-                        "💸 Recebeu um tip",
+                moment = self._event_moment(game, snap, kind, event)
+                if moment:
+                    candidates.append(moment)
+
+        # --- opening bounty runes (counted from the events above)
+        if clock > OPENING_BOUNTY_CLOCK + 15 and game.opening_bounties and once("bounties"):
+            candidates.append(Moment("", _line("bounties", n=min(game.opening_bounties, 4)), roast=False))
+
+        # --- smoke: a teammate used it a moment ago; did we get left behind?
+        if game.smoke_check_clock is not None and clock >= game.smoke_check_clock:
+            game.smoke_check_clock = None
+            if snap.alive and not snap.smoked and once(f"smoke_fomo{clock // 600}"):
+                candidates.append(Moment(
+                    "ficou de fora: a equipa usou Smoke of Deceit e foi gankar sem ele",
+                    _line("smoke_fomo"),
+                ))
+        if snap.smoked and not prev.smoked and once(f"smoked{clock // 600}"):
+            candidates.append(Moment("", _line("smoked"), roast=False))
+
+        # --- pause
+        if snap.paused and not prev.paused and once("pause"):
+            candidates.append(Moment("", _line("pause"), roast=False))
+
+        # --- neutral item tiers
+        for tier_clock, tier in NEUTRAL_TIERS:
+            if prev.clock < tier_clock <= clock and once(f"neutral{tier}"):
+                candidates.append(Moment("", _line("neutral", n=tier), roast=False))
+
+        # --- Power Treads toggling (summed up in one line when the game ends)
+        if TREADS in snap.items and snap.max_mana and prev.max_mana:
+            change = snap.max_mana - prev.max_mana
+            if change == TREADS_INT_MANA:
+                game.treads_mana_at_toggle = snap.mana
+            elif change == -TREADS_INT_MANA and game.treads_mana_at_toggle is not None:
+                saved = game.treads_mana_at_toggle - snap.mana - TREADS_INT_MANA
+                game.treads_mana_at_toggle = None
+                if saved > 0:
+                    game.tread_toggles += 1
+                    game.tread_mana_saved += saved
+
+        # --- Aegis held until it expired
+        if prev.has_items and snap.has_items:
+            if AEGIS in snap.items:
+                if game.aegis_since is None:
+                    game.aegis_since = clock
+            elif game.aegis_since is not None:
+                held = clock - game.aegis_since
+                game.aegis_since = None
+                if held >= AEGIS_SECONDS - 10 and snap.alive and prev.alive:
+                    candidates.append(Moment(
+                        "deixou a Aegis expirar sem a usar (5 minutos com ela e nada)",
+                        _line("aegis_expired"),
                     ))
-                elif kind == "tip" and event.get("sender_player_id") == snap.player_slot:
-                    candidates.append(("acabou de dar tip a outro jogador", "💸 Deu um tip"))
-                elif kind == "aegis_picked_up" and event.get("player_id") == snap.player_slot:
-                    how = "Roubou" if event.get("snatched") else "Apanhou"
-                    candidates.append((f"{how.lower()} a Aegis", f"🛡️ {how} a Aegis"))
 
         # --- purchases
         if prev.has_items and snap.has_items:
             if MIDAS in snap.items and MIDAS not in prev.items and once("midas"):
                 if clock >= LATE_MIDAS_CLOCK or snap.deaths >= THERAPY_MIDAS_DEATHS:
-                    candidates.append((
+                    candidates.append(Moment(
                         f"comprou Hand of Midas aos {_clock_string(clock)} com {snap.kda} "
                         f"(therapy midas: comprar Midas para se sentir melhor em vez de ganhar o jogo)",
-                        "🩹 Therapy Midas",
+                        _line("therapy_midas"),
                     ))
             if RAPIER in snap.items and RAPIER not in prev.items and once(f"rapier{clock // 300}"):
-                candidates.append((f"acabou de comprar uma Divine Rapier ({snap.kda})", "🗡️ Comprou Divine Rapier"))
+                candidates.append(Moment(f"acabou de comprar uma Divine Rapier ({snap.kda})", _line("rapier")))
 
         # --- kills
         if snap.kills > prev.kills:
             game.kill_times.extend([clock] * (snap.kills - prev.kills))
             recent = [t for t in game.kill_times if clock - t <= MULTI_KILL_WINDOW]
             if len(recent) >= MULTI_KILL_COUNT and once(f"multi{snap.kills}"):
-                candidates.append((
+                candidates.append(Moment(
                     f"fez {len(recent)} kills em {MULTI_KILL_WINDOW} segundos ({snap.kda})",
-                    f"🔥 {len(recent)} kills em {MULTI_KILL_WINDOW}s",
+                    _line("multi_kill", n=len(recent), s=MULTI_KILL_WINDOW),
                 ))
                 game.kill_times.clear()
         for milestone in KILL_STREAK_MILESTONES:
             if snap.kill_streak >= milestone and once(f"streak{milestone}"):
-                candidates.append((
+                candidates.append(Moment(
                     f"vai numa kill streak de {snap.kill_streak} sem morrer ({snap.kda})",
-                    f"🔥 Kill streak de {snap.kill_streak}",
+                    _line("streak", n=snap.kill_streak),
                 ))
 
         # --- last hits at 10 and 20 minutes (cores only, see LAST_HIT_CHECKPOINTS)
@@ -639,9 +795,9 @@ class GSIServer:
                 and low <= snap.last_hits < high
                 and once("last_hits")
             ):
-                candidates.append((
+                candidates.append(Moment(
                     f"chegou aos {checkpoint // 60} minutos com apenas {snap.last_hits} last hits e {snap.gpm} GPM",
-                    f"🌾 {snap.last_hits} last hits aos {checkpoint // 60} min",
+                    _line("last_hits", n=snap.last_hits, m=checkpoint // 60),
                 ))
 
         # --- Midas sitting off cooldown
@@ -652,28 +808,124 @@ class GSIServer:
                 clock - game.midas_ready_since >= MIDAS_IDLE_SECONDS
                 and game.midas_idle_roasts < MIDAS_IDLE_ROASTS
             ):
-                candidates.append((
-                    f"tem o Hand of Midas pronto há {clock - game.midas_ready_since} segundos e não o usa",
-                    f"⏳ Midas parado há {clock - game.midas_ready_since}s",
+                idle = clock - game.midas_ready_since
+                candidates.append(Moment(
+                    f"tem o Hand of Midas pronto há {idle} segundos e não o usa",
+                    _line("midas_idle", s=idle),
                 ))
                 game.midas_idle_roasts += 1
+                game.midas_told_since = game.midas_ready_since
                 game.midas_ready_since = None
         else:
+            # Called out earlier and now on cooldown: it was finally used
+            if (
+                game.midas_told_since is not None
+                and MIDAS in snap.items and snap.items[MIDAS].cooldown > 0
+            ):
+                late = clock - game.midas_told_since
+                game.midas_told_since = None
+                candidates.append(Moment(
+                    f"usou finalmente o Hand of Midas, {late} segundos depois de estar pronto",
+                    _line("midas_late", s=late),
+                ))
             game.midas_ready_since = None
 
         # --- walking around without a TP scroll
+        if snap.has_items and snap.has_tp and game.no_tp_told_since is not None:
+            # Called out earlier and now has one
+            without = clock - game.no_tp_told_since
+            game.no_tp_told_since = None
+            if snap.alive:
+                candidates.append(Moment(
+                    f"finalmente comprou um TP scroll, depois de {without} segundos sem nenhum",
+                    _line("tp_found", s=without),
+                ))
+            else:
+                candidates.append(Moment(
+                    f"só arranjou um TP scroll porque morreu, depois de {without} segundos sem nenhum",
+                    _line("tp_death", s=without),
+                ))
         if snap.has_items and not snap.has_tp and snap.alive and clock >= NO_TP_AFTER_CLOCK:
             if game.no_tp_since is None:
                 game.no_tp_since = clock
             elif clock - game.no_tp_since >= NO_TP_SECONDS and once("no_tp"):
-                candidates.append((
+                candidates.append(Moment(
                     f"anda há {(clock - game.no_tp_since) // 60} minutos sem TP scroll aos {_clock_string(clock)}",
-                    "🚶 Sem TP scroll",
+                    _line("no_tp"),
                 ))
+                game.no_tp_told_since = game.no_tp_since
         else:
             game.no_tp_since = None
 
-        return candidates[0] if candidates else None
+        return candidates
+
+    def _event_moment(self, game: LiveGame, snap: Snapshot, kind, event: dict) -> Optional[Moment]:
+        """Turn one new entry of the GSI events block into a Moment, if any."""
+        me = snap.player_slot
+        clock = snap.clock
+
+        def side_of(slot) -> Optional[str]:
+            # Event player IDs are 0-4 for Radiant and 5-9 for Dire
+            if not isinstance(slot, int) or isinstance(slot, bool) or not 0 <= slot <= 9:
+                return None
+            return "radiant" if slot <= 4 else "dire"
+
+        if kind == "tip":
+            if event.get("receiver_player_id") == me:
+                return Moment(
+                    "acabou de receber um tip de outro jogador (quase de certeza a gozar com ele)",
+                    _line("tip_received"),
+                )
+            if event.get("sender_player_id") == me:
+                return Moment("acabou de dar tip a outro jogador", _line("tip_sent"))
+            return None
+
+        if kind == "roshan_killed":
+            team = event.get("killed_by_team")
+            if team not in ("radiant", "dire"):
+                return None
+            lo, hi = (_clock_string(clock + s) for s in ROSHAN_RESPAWN_SECONDS)
+            key = "roshan_ours" if team == snap.team else "roshan_theirs"
+            return Moment("", _line(key, lo=lo, hi=hi), roast=False)
+
+        if kind == "aegis_picked_up":
+            snatched = bool(event.get("snatched"))
+            holder = event.get("player_id")
+            if holder == me:
+                return Moment(
+                    "roubou a Aegis" if snatched else "apanhou a Aegis",
+                    _line("aegis_mine_snatched" if snatched else "aegis_mine"),
+                )
+            side = side_of(holder)
+            if side is None:
+                return None
+            key = "aegis_ours" if side == snap.team else "aegis_theirs"
+            return Moment("", _line(key + ("_snatched" if snatched else "")), roast=False)
+
+        if kind == "aegis_denied":
+            if event.get("player_id") == me:
+                return Moment("negou a Aegis (destruiu-a em vez de a apanhar)", _line("aegis_mine_denied"))
+            return Moment("", _line("aegis_denied"), roast=False)
+
+        if kind == "bounty_rune_pickup":
+            if clock <= OPENING_BOUNTY_CLOCK and event.get("team") == snap.team:
+                game.opening_bounties += 1
+            return None
+
+        if kind == "generic_event":
+            try:
+                payload = json.loads(event.get("data") or "{}")
+            except (TypeError, ValueError):
+                return None
+            if not isinstance(payload, dict) or payload.get("type") != SMOKE_EVENT:
+                return None
+            caster = payload.get("playerid1")
+            # Our own smoke is covered by the "smoked" line
+            if caster != me and side_of(caster) == snap.team:
+                game.smoke_check_clock = clock + SMOKE_CHECK_SECONDS
+            return None
+
+        return None
 
     # ------------------------------------------------------------ background
 
@@ -725,6 +977,7 @@ class GSIServer:
             game.feed = [list(entry) for entry in raw.get("feed", [])]
             game.fired = set(raw.get("fired", []))
             game.moments = int(raw.get("moments", 0))
+            game.info_lines = int(raw.get("info_lines", 0))
             if raw.get("ended"):
                 game.ended = True
                 game.result = raw.get("result")
@@ -742,6 +995,7 @@ class GSIServer:
                     "feed": game.feed,
                     "fired": sorted(game.fired),
                     "moments": game.moments,
+                    "info_lines": game.info_lines,
                     "ended": game.ended,
                     "result": game.result,
                 },
@@ -773,8 +1027,8 @@ class GSIServer:
         finally:
             game.refreshing = False
 
-    async def _roast(self, game: LiveGame, moment: tuple[str, str], snap: Snapshot) -> None:
-        situation, fallback = moment
+    async def _roast(self, game: LiveGame, moment: Moment, snap: Snapshot) -> None:
+        situation, fallback = moment.situation, moment.fallback
         clock = _clock_string(snap.clock)
         logger.info(f"[GSI] moment for {game.name} in match {game.match_id} at {clock}: {situation}")
         comment = await self.gemini.generate_live_comment(
