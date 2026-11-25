@@ -5,6 +5,7 @@ Handles Discord client, events, and message views.
 
 import io
 import logging
+import re
 from typing import Optional
 
 import discord
@@ -164,6 +165,34 @@ Only games played on the {player} Steam account are tracked; other accounts on t
 The file contains your personal token, so do not share it. Running this command again gives you a new file and disables the old one. To stop, delete the file."""
 
 
+STEAM_ID64_BASE = 76561197960265728
+
+DOTA_ID_HELP = (
+    "Your Dota ID is the number at the end of your profile link, for example "
+    "`https://stratz.com/players/<ID>` or `https://www.opendota.com/players/<ID>`. "
+    "It is also the Friend ID shown on your profile inside Dota 2. "
+    "Paste the number or the whole link."
+)
+
+
+def resolve_dota_id(text: str, players: dict[str, str]) -> Optional[str]:
+    """
+    Find the tracked player a pasted Dota ID belongs to.
+
+    Accepts the account ID (the number in a Stratz/OpenDota/Dotabuff profile
+    URL, also the in-game Friend ID), that whole URL, or a Steam ID 64.
+
+    Returns:
+        The player's Steam ID 64, or None if the text holds no tracked ID.
+    """
+    for number in re.findall(r"\d{1,20}", text or ""):
+        value = int(number)
+        for steam_id in (str(value), str(value + STEAM_ID64_BASE)):
+            if steam_id in players:
+                return steam_id
+    return None
+
+
 def build_gsi_config(uri: str, token: str) -> str:
     """Build the Dota 2 Game State Integration cfg file for one player."""
     return f'''"Impetus"
@@ -218,24 +247,27 @@ class ProfessorBot(discord.Client):
         """
         self._gsi_redis = redis_store
         self._gsi_public_url = public_url
-        
-        choices = [
-            app_commands.Choice(name=name, value=steam_id)
-            for steam_id, name in players.items()
-        ]
-        
+
         @self.tree.command(
             name="dota-live-setup",
             description="Get your personal config file for live Dota 2 tracking",
         )
-        @app_commands.describe(player="Which tracked player you are")
-        @app_commands.choices(player=choices)
+        @app_commands.describe(
+            dota_id="The number at the end of your Stratz/OpenDota profile link (or paste the link)"
+        )
         @app_commands.guild_only()
         async def dota_live_setup(
             interaction: discord.Interaction,
-            player: app_commands.Choice[str],
+            dota_id: app_commands.Range[str, 1, 200],
         ):
-            await self._handle_live_setup(interaction, player.value, player.name)
+            steam_id = resolve_dota_id(dota_id, players)
+            if steam_id is None:
+                await interaction.response.send_message(
+                    "That ID is not one of the players Impetus tracks.\n\n" + DOTA_ID_HELP,
+                    ephemeral=True,
+                )
+                return
+            await self._handle_live_setup(interaction, steam_id, players[steam_id])
     
     async def _handle_live_setup(
         self,
