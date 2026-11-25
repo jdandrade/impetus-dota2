@@ -12,29 +12,29 @@ import discord
 
 logger = logging.getLogger(__name__)
 
-RELEASE_VERSION = "0.3.0"
+RELEASE_VERSION = "0.4.0"
 
 RELEASE_NOTES = """
-🚀 **Impetus v0.3.0 Released!**
+🚀 **Impetus v0.4.0 Released!**
 
-O Professor esteve calado uns dias. Voltou pior.
+O Professor andou a estudar. Infelizmente para vocês.
 
-🔴 **LIVE Tracking (novo, opcional)**
-• O Professor passa a ver os vossos jogos em direto. Um único post por jogo, atualizado ao vivo.
-• Ele repara em coisas. Não vos digo quais. Vão descobrir da pior maneira.
-• Para ativar: `/dota-live-setup` e seguir os 3 passos
-• É o Game State Integration oficial da Valve: um ficheiro de texto, sem instalar nada
+🔴 **LIVE Tracking: ainda só o feAr é que tem coragem**
+• Até agora só o feAr ativou isto. Os restantes estão com medo de quê, exatamente?
+• Ativar ficou mais fácil: `/dota-live-setup` e colar o vosso Dota ID
+• O ID é o número no fim do vosso link do Stratz (`stratz.com/players/<ID>`), ou o Friend ID no perfil dentro do Dota. Também podem colar o link inteiro.
+• Recebem um ficheiro de texto e 3 passos. É o Game State Integration oficial da Valve, não se instala nada.
 
-🕵️ **Smurf Check**
-• O Professor agora investiga a equipa inimiga depois de cada jogo
-• feAr, isto é para ti. Cuidado com o que desejas.
+👀 **O Professor repara em mais coisas**
+• Muito mais coisas. Continuo sem vos dizer quais.
+• E já não repete sempre a mesma piada.
 
-⚡ **Resultados mais rápidos**
-• Os report cards chegam muito mais cedo
-• Precisam de ter "Expose Public Match Data" ligado no Dota
+🧾 **Um post por jogo**
+• O post LIVE transforma-se no report card quando o jogo acaba. Menos spam, a mesma humilhação.
 
-🔧 **Bug Fixes:**
-• O Professor já não repete o mesmo jogo vezes sem conta (pede desculpa, mas só desta vez)
+📺 **Pro matches**
+• Quando começa uma série num torneio a sério, o Professor avisa e deixa os links das streams
+• Sem spoilers: nunca diz quem ganhou. Vejam e aprendam qualquer coisa.
 """
 
 
