@@ -140,7 +140,7 @@ LINES = {
     "smoke_fomo": ("🌫️ A equipa fez smoke sem ele", "🌫️ Smoke gank... e ele ficou em casa", "🌫️ Ficou de fora do smoke"),
     # info lines
     "smoked": ("🌫️ Em smoke. Vem aí gank.", "🌫️ Smoke ativo", "🌫️ Desapareceu do mapa (smoke)"),
-    "pause": ("⏸️ Quem pausou o jogo?", "⏸️ Jogo em pausa", "⏸️ Pausa. Alguém foi buscar café."),
+    "pause": ("⏸️ Pausa. Caiu uma bomba em {city}.",),
     "roshan_ours": ("🐲 Roshan morto pela nossa equipa · volta entre {lo} e {hi}",),
     "roshan_theirs": ("🐲 O inimigo matou o Roshan · volta entre {lo} e {hi}",),
     "aegis_ours": ("🛡️ Aegis para a nossa equipa",),
@@ -152,6 +152,14 @@ LINES = {
     "neutral": ("🎁 Neutral items de tier {n} disponíveis",),
     "treads": ("👟 Trocou os treads {n}x e poupou {mana} de mana",),
 }
+
+
+# Where the "bomb" fell when somebody pauses
+PAUSE_CITIES = (
+    "Chelyabinsk", "Novosibirsk", "Omsk", "Minsk", "Belgrado", "Sófia", "Bucareste",
+    "Varsóvia", "Bratislava", "Zagreb", "Sarajevo", "Skopje", "Chisinau", "Vladivostok",
+    "Krasnoyarsk", "Plovdiv", "Novi Sad", "Katowice",
+)
 
 
 def _line(key: str, **values) -> str:
@@ -726,7 +734,7 @@ class GSIServer:
 
         # --- pause
         if snap.paused and not prev.paused and once("pause"):
-            candidates.append(Moment("", _line("pause"), roast=False))
+            candidates.append(Moment("", _line("pause", city=random.choice(PAUSE_CITIES)), roast=False))
 
         # --- neutral item tiers
         for tier_clock, tier in NEUTRAL_TIERS:
